@@ -1,0 +1,39 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "attendance-sys-uae",
+          "appId": "1:1071205724398:android:c4410f4638a17b712dc3ff",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "attendance-sys-uae",
+          "configurations": {
+            "android": "1:1071205724398:android:c4410f4638a17b712dc3ff",
+            "ios": "1:1071205724398:ios:f67854350111f1942dc3ff",
+            "macos": "1:1071205724398:ios:f67854350111f1942dc3ff",
+            "web": "1:1071205724398:web:5eceecfdd079073a2dc3ff",
+            "windows": "1:1071205724398:web:8074945227695bd12dc3ff"
+          }
+        }
+      }
+    }
+  }
+}
