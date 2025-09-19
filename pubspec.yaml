@@ -51,6 +51,7 @@ dependencies:
   # Camera & Face Recognition
   camera: ^0.10.5+5
   google_ml_kit: ^0.15.0
+  image_picker: ^1.0.4
   
   # Utilities
   intl: ^0.18.1

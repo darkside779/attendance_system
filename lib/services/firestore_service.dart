@@ -124,17 +124,49 @@ class FirestoreService {
   // Get attendance records for a specific user
   Future<List<AttendanceModel>> getUserAttendance(String userId) async {
     try {
+      print('🔍 Getting user attendance history for: $userId');
+      
+      // Use simple query to avoid composite index requirement
       final snapshot = await _firestore
           .collection('attendance')
-          .where('userId', isEqualTo: userId)
-          .orderBy('date', descending: true)
+          .orderBy('checkInTime', descending: true)
+          .limit(100) // Get more records to ensure we get all user's data
           .get();
 
-      return snapshot.docs
-          .map((doc) => AttendanceModel.fromDocument(doc))
-          .toList();
+      print('📊 Found ${snapshot.docs.length} total attendance records');
+
+      // Filter locally by userId to avoid composite index
+      final userRecords = <AttendanceModel>[];
+      
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          final recordUserId = data['userId'] as String?;
+          
+          if (recordUserId == userId) {
+            final attendance = AttendanceModel.fromDocument(doc);
+            userRecords.add(attendance);
+            
+            print('✅ Found user record: ${doc.id}');
+            print('  - Date: ${attendance.date}');
+            print('  - Status: ${attendance.status}');
+            print('  - CheckIn: ${attendance.checkInTime}');
+            print('  - CheckOut: ${attendance.checkOutTime}');
+          }
+        } catch (e) {
+          print('⚠️ Error processing record ${doc.id}: $e');
+          continue;
+        }
+      }
+
+      print('📊 Filtered to ${userRecords.length} records for user');
+      
+      // Sort by date (most recent first)
+      userRecords.sort((a, b) => b.date.compareTo(a.date));
+      
+      return userRecords;
     } catch (e) {
-      print('Error getting user attendance: $e');
+      print('❌ Error getting user attendance: $e');
       return [];
     }
   }

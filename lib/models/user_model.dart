@@ -1,10 +1,12 @@
+// ignore_for_file: avoid_print
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
   final String userId;
   final String name;
   final String email;
-  final String role; // 'employee' or 'admin'
+  final String role; // 'employee', 'admin', or 'superadmin'
   final String? faceData;
   final String position;
   final DateTime createdAt;
@@ -89,6 +91,13 @@ class UserModel {
 
   // Check if user is admin
   bool get isAdmin => role.toLowerCase() == 'admin';
+
+  // Check if user is super admin
+  bool get isSuperAdmin {
+    final result = role.toLowerCase() == 'superadmin';
+    print('🔍 UserModel.isSuperAdmin - Role: "$role", Result: $result');
+    return result;
+  }
 
   // Check if user is employee
   bool get isEmployee => role.toLowerCase() == 'employee';

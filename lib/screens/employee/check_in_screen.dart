@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, avoid_print
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +9,7 @@ import '../../providers/location_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/face_camera_widget.dart';
+import '../../services/face_recognition_service.dart';
 
 class CheckInScreen extends StatefulWidget {
   const CheckInScreen({super.key});
@@ -18,8 +19,10 @@ class CheckInScreen extends StatefulWidget {
 }
 
 class _CheckInScreenState extends State<CheckInScreen> {
+  final FaceRecognitionService _faceService = FaceRecognitionService();
   bool _isLocationChecked = false;
-  bool _isFaceRecognitionEnabled = false;
+  bool _faceVerified = false;
+  bool _hasFaceData = false;
 
   @override
   void initState() {
@@ -27,7 +30,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
     // Schedule the call to run *after* the first frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkLocation();
+      _checkFaceRegistration();
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _checkLocation() async {
@@ -47,9 +56,44 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
 
     await locationProvider.getCurrentLocation();
+    if (mounted) {
+      setState(() {
+        _isLocationChecked = true;
+      });
+    }
+  }
+
+  Future<void> _checkFaceRegistration() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.currentUser != null) {
+        final hasFace = await _faceService.hasRegisteredFace(
+          authProvider.currentUser!.userId,
+        );
+        if (mounted) {
+          setState(() {
+            _hasFaceData = hasFace;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error checking face registration: $e');
+    }
+  }
+
+  void _onFaceDetected(String result) {
+    // Face detected and verified
     setState(() {
-      _isLocationChecked = true;
+      _faceVerified = true;
     });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Face verified successfully!'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -115,9 +159,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Face Recognition Section
-                  if (_isFaceRecognitionEnabled) ...[
+                  // Face Recognition Section (Always shown now)
+                  if (_hasFaceData) ...[
                     _buildFaceRecognitionSection(),
+                    const SizedBox(height: 24),
+                  ] else ...[
+                    _buildNoFaceDataWarning(),
                     const SizedBox(height: 24),
                   ],
 
@@ -164,19 +211,26 @@ class _CheckInScreenState extends State<CheckInScreen> {
           onRetry: _getLocationRetryAction(locationProvider, settingsProvider),
         ),
 
-        // Face Recognition Check
+        // Face Recognition Check (Required)
         _StatusCheckItem(
           icon: Icons.face_outlined,
-          title: 'Face Recognition',
-          status: _isFaceRecognitionEnabled ? 'Ready' : 'Not enabled',
-          isSuccess: _isFaceRecognitionEnabled,
-          onRetry: _isFaceRecognitionEnabled
-              ? null
-              : () {
-                  setState(() {
-                    _isFaceRecognitionEnabled = true;
-                  });
-                },
+          title: 'Face Verification (Required)',
+          status: !_hasFaceData 
+              ? 'No face registered - Please register face first'
+              : _faceVerified 
+                  ? 'Face verified ✓' 
+                  : 'Please verify your face',
+          isSuccess: _hasFaceData && _faceVerified,
+          isError: !_hasFaceData,
+          onRetry: !_hasFaceData 
+              ? () => Navigator.pushNamed(context, '/face-management')
+              : _faceVerified 
+                  ? null 
+                  : () {
+                      setState(() {
+                        _faceVerified = false;
+                      });
+                    },
         ),
 
         // Network Check
@@ -195,7 +249,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Face Recognition',
+          'Face Verification Required',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -210,9 +264,104 @@ class _CheckInScreenState extends State<CheckInScreen> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppColors.grey.withOpacity(0.3)),
           ),
-          child: const FaceCameraWidget(),
+          child: FaceCameraWidget(
+            onFaceDetected: _onFaceDetected,
+            isActive: !_faceVerified,
+          ),
         ),
+        if (_faceVerified) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.success.withOpacity(0.3)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.success, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Face verified successfully!',
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  Widget _buildNoFaceDataWarning() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.warning_amber_outlined,
+                color: Colors.orange[700],
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Face Registration Required',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'You must register your face before you can check in or out. This is required for attendance verification.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.orange[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                // Navigate to face management screen
+                Navigator.pushNamed(context, '/face-management').then((_) {
+                  // Refresh face data when returning
+                  _checkFaceRegistration();
+                });
+              },
+              icon: const Icon(Icons.face),
+              label: const Text('Register Face Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[700],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -225,7 +374,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
     if (user == null) return const SizedBox.shrink();
 
     final canProceed =
-        _isLocationChecked && locationProvider.isWithinCompanyLocation;
+        _isLocationChecked && 
+        locationProvider.isWithinCompanyLocation &&
+        _hasFaceData && 
+        _faceVerified;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -270,13 +422,28 @@ class _CheckInScreenState extends State<CheckInScreen> {
                   color: AppColors.success,
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Attendance completed for today!',
-                    style: TextStyle(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w500,
-                    ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Attendance completed for today!',
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (attendanceProvider.shiftStatusMessage.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          attendanceProvider.shiftStatusMessage,
+                          style: TextStyle(
+                            color: AppColors.success.withOpacity(0.8),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
@@ -285,16 +452,30 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
         const SizedBox(height: 12),
 
-        // Enable Face Recognition Button
-        if (!_isFaceRecognitionEnabled)
-          OutlinedButton.icon(
-            onPressed: () {
-              setState(() {
-                _isFaceRecognitionEnabled = true;
-              });
-            },
-            icon: const Icon(Icons.face),
-            label: const Text('Enable Face Recognition'),
+        // Face verification requirements info
+        if (!canProceed)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.info.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.info.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: AppColors.info, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Complete all requirements above to enable check-in/out',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.info.withOpacity(0.8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
       ],
     );

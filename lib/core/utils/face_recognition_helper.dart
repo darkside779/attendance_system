@@ -123,6 +123,11 @@ class FaceRecognitionHelper {
 
   /// Dispose resources
   static Future<void> dispose() async {
-    await _faceDetector.close();
+    try {
+      await _faceDetector.close();
+    } catch (e) {
+      // Handle web platform or other disposal errors gracefully
+      print('Face detector disposal failed (likely web platform): $e');
+    }
   }
 }

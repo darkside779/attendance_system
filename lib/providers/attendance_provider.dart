@@ -1,24 +1,26 @@
 // ignore_for_file: unused_field, unused_import, avoid_types_as_parameter_names, avoid_print
 
-import 'package:flutter/foundation.dart';
+import 'package:attendance_system/models/settings_model.dart';
+import 'package:attendance_system/models/user_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/attendance_model.dart';
-import '../models/settings_model.dart';
-import '../models/user_model.dart';
+import 'package:flutter/material.dart';
 import '../services/attendance_service.dart';
+import '../models/attendance_model.dart';
+import '../models/shift_model.dart' hide ShiftModel;
+import 'shift_provider.dart';
 import '../services/firestore_service.dart';
 
 class AttendanceProvider extends ChangeNotifier {
   final AttendanceService _attendanceService = AttendanceService();
   final FirestoreService _firestoreService = FirestoreService();
-  
+
   AttendanceModel? _todayAttendance;
   List<AttendanceModel> _attendanceHistory = [];
   final Map<String, dynamic> _monthlyStats = {};
   bool _isLoading = false;
   String? _errorMessage;
   String? _successMessage;
-  
+
   // Getters
   AttendanceModel? get todayAttendance => _todayAttendance;
   List<AttendanceModel> get attendanceHistory => _attendanceHistory;
@@ -26,12 +28,40 @@ class AttendanceProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get successMessage => _successMessage;
-  
+
   // Status getters
   bool get hasCheckedInToday => _todayAttendance?.hasCheckedIn ?? false;
   bool get hasCheckedOutToday => _todayAttendance?.hasCheckedOut ?? false;
-  bool get canCheckIn => !hasCheckedInToday;
+  bool get hasCompletedShiftToday => hasCheckedInToday && hasCheckedOutToday;
+  bool get canCheckIn => !hasCheckedInToday && !hasCompletedShiftToday;
   bool get canCheckOut => hasCheckedInToday && !hasCheckedOutToday;
+
+  // Check if current time is within check-in window using shift data
+  bool canCheckInWithShifts(ShiftProvider? shiftProvider) {
+    if (hasCheckedInToday || hasCompletedShiftToday) return false;
+
+    if (shiftProvider == null || !shiftProvider.hasShifts) {
+      // Fallback to default window if no shift data
+      return _isWithinDefaultCheckInWindow();
+    }
+
+    return shiftProvider.canCheckInNow();
+  }
+
+  // Fallback default check-in window
+  bool _isWithinDefaultCheckInWindow() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Default shift start time (8:00 AM - 8:00 PM)
+    final shiftStartTime = today.add(const Duration(hours: 8)); // 8:00 AM
+    final checkInWindowStart =
+        shiftStartTime.subtract(const Duration(minutes: 30)); // 7:30 AM
+    final checkInWindowEnd = shiftStartTime
+        .add(const Duration(hours: 12)); // 8:00 PM (end of work day)
+
+    return now.isAfter(checkInWindowStart) && now.isBefore(checkInWindowEnd);
+  }
 
   /// Load today's attendance for user
   Future<void> loadTodayAttendance(String userId) async {
@@ -41,10 +71,11 @@ class AttendanceProvider extends ChangeNotifier {
       _clearMessages();
 
       try {
-        print('🔄 AttendanceProvider: Loading today attendance for user $userId');
+        print(
+            '🔄 AttendanceProvider: Loading today attendance for user $userId');
         final attendance = await _attendanceService.getTodayAttendance(userId);
         _todayAttendance = attendance;
-        
+
         if (attendance != null) {
           print('✅ AttendanceProvider: Loaded attendance');
           print('  - Has checked in: ${attendance.hasCheckedIn}');
@@ -59,7 +90,7 @@ class AttendanceProvider extends ChangeNotifier {
         print('❌ AttendanceProvider error: $e');
         _setError('Failed to load today\'s attendance: $e');
       }
-      
+
       _setLoading(false);
     });
   }
@@ -72,12 +103,23 @@ class AttendanceProvider extends ChangeNotifier {
       _clearMessages();
 
       try {
-        final history = await _attendanceService.getUserAttendanceHistory(userId);
+        print(
+            '🔄 AttendanceProvider: Loading attendance history for user $userId');
+        final history =
+            await _attendanceService.getUserAttendanceHistory(userId);
         _attendanceHistory = history;
+
+        print(
+            '✅ AttendanceProvider: Loaded ${history.length} attendance records');
+        for (var record in history) {
+          print(
+              '  - ${record.date}: ${record.status} (CheckIn: ${record.checkInTime}, CheckOut: ${record.checkOutTime})');
+        }
       } catch (e) {
+        print('❌ AttendanceProvider: Error loading history: $e');
         _setError('Failed to load attendance history: $e');
       }
-      
+
       _setLoading(false);
     });
   }
@@ -207,7 +249,7 @@ class AttendanceProvider extends ChangeNotifier {
   /// Get working hours today
   String get todayWorkingHours {
     if (_todayAttendance == null) return '0h 0m';
-    
+
     if (_todayAttendance!.hasCheckedOut) {
       return _todayAttendance!.formattedWorkingTime;
     } else if (_todayAttendance!.hasCheckedIn) {
@@ -217,21 +259,36 @@ class AttendanceProvider extends ChangeNotifier {
       final remainingMinutes = minutes % 60;
       return '${hours}h ${remainingMinutes}m';
     }
-    
+
     return '0h 0m';
   }
 
   /// Get today's status
   String get todayStatus {
-    if (_todayAttendance == null) return 'Not checked in';
-    
+    if (_todayAttendance == null) {
+      if (!canCheckInWithShifts(null)) {
+        return 'Check-in available at 7:30 AM';
+      }
+      return 'Not checked in';
+    }
+
     if (_todayAttendance!.hasCheckedOut) {
-      return 'Completed - ${_todayAttendance!.status}';
+      return 'Shift completed - ${_todayAttendance!.status}';
     } else if (_todayAttendance!.hasCheckedIn) {
       return 'Checked in - ${_todayAttendance!.status}';
     }
-    
+
     return 'Not checked in';
+  }
+
+  /// Get status message for completed shifts
+  String get shiftStatusMessage {
+    if (hasCompletedShiftToday) {
+      return 'You have completed your shift for today. Check-in will be available tomorrow at 7:30 AM.';
+    } else if (!canCheckInWithShifts(null) && !hasCheckedInToday) {
+      return 'Check-in is only available between 7:30 AM and 8:00 PM.';
+    }
+    return '';
   }
 
   /// Set loading state
@@ -267,15 +324,17 @@ class AttendanceProvider extends ChangeNotifier {
     _clearMessages();
 
     try {
-      final startOfMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
-      final endOfMonth = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
-      
+      final startOfMonth =
+          DateTime(DateTime.now().year, DateTime.now().month, 1);
+      final endOfMonth =
+          DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
+
       final records = await getAttendanceByDateRange(startOfMonth, endOfMonth);
       _calculateMonthlyStats(records);
     } catch (e) {
       _setError('Failed to load monthly stats: $e');
     }
-    
+
     _setLoading(false);
   }
 
@@ -285,7 +344,7 @@ class AttendanceProvider extends ChangeNotifier {
     final present = records.where((a) => a.status == 'present').length;
     final late = records.where((a) => a.status == 'late').length;
     final absent = records.where((a) => a.status == 'absent').length;
-    
+
     final totalWorkingMinutes = records
         .where((a) => a.hasCheckedOut)
         .fold(0, (sum, a) => sum + a.totalMinutes);
@@ -297,9 +356,11 @@ class AttendanceProvider extends ChangeNotifier {
       'late': late,
       'absent': absent,
       'totalWorkingHours': (totalWorkingMinutes / 60).toStringAsFixed(1),
-      'averageWorkingHours': total > 0 ? (totalWorkingMinutes / total / 60).toStringAsFixed(1) : '0.0',
+      'averageWorkingHours': total > 0
+          ? (totalWorkingMinutes / total / 60).toStringAsFixed(1)
+          : '0.0',
     });
-    
+
     notifyListeners();
   }
 
@@ -312,7 +373,7 @@ class AttendanceProvider extends ChangeNotifier {
 /// Admin-specific attendance provider
 class AdminAttendanceProvider extends ChangeNotifier {
   final AttendanceService _attendanceService = AttendanceService();
-  
+
   List<AttendanceSummary> _todayAttendanceSummary = [];
   List<AttendanceModel> _allAttendanceRecords = [];
   List<AttendanceModel> _todayAttendance = [];
@@ -321,7 +382,7 @@ class AdminAttendanceProvider extends ChangeNotifier {
   Map<String, dynamic> _monthlyStats = {};
   bool _isLoading = false;
   String? _errorMessage;
-  
+
   // Getters
   List<AttendanceSummary> get todayAttendanceSummary => _todayAttendanceSummary;
   List<AttendanceModel> get allAttendanceRecords => _allAttendanceRecords;
@@ -338,32 +399,36 @@ class AdminAttendanceProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      final summary = await _attendanceService.getAttendanceSummary(DateTime.now());
+      final summary =
+          await _attendanceService.getAttendanceSummary(DateTime.now());
       _todayAttendanceSummary = summary;
     } catch (e) {
       _setError('Failed to load attendance summary: $e');
     }
-    
+
     _setLoading(false);
   }
 
   /// Load attendance records for date range
-  Future<void> loadAttendanceRecords(DateTime startDate, DateTime endDate) async {
+  Future<void> loadAttendanceRecords(
+      DateTime startDate, DateTime endDate) async {
     _setLoading(true);
     _clearError();
 
     try {
-      final records = await _attendanceService.getAttendanceByDateRange(startDate, endDate);
+      final records =
+          await _attendanceService.getAttendanceByDateRange(startDate, endDate);
       _allAttendanceRecords = records;
     } catch (e) {
       _setError('Failed to load attendance records: $e');
     }
-    
+
     _setLoading(false);
   }
 
   /// Get attendance summary for specific date
-  Future<List<AttendanceSummary>> getAttendanceSummaryForDate(DateTime date) async {
+  Future<List<AttendanceSummary>> getAttendanceSummaryForDate(
+      DateTime date) async {
     _setLoading(true);
     _clearError();
 
@@ -402,9 +467,12 @@ class AdminAttendanceProvider extends ChangeNotifier {
 
   /// Get statistics summary
   Map<String, int> get todayStatistics {
-    final present = _todayAttendanceSummary.where((s) => s.status == 'present').length;
-    final late = _todayAttendanceSummary.where((s) => s.status == 'late').length;
-    final absent = _todayAttendanceSummary.where((s) => s.status == 'absent').length;
+    final present =
+        _todayAttendanceSummary.where((s) => s.status == 'present').length;
+    final late =
+        _todayAttendanceSummary.where((s) => s.status == 'late').length;
+    final absent =
+        _todayAttendanceSummary.where((s) => s.status == 'absent').length;
     final total = _todayAttendanceSummary.length;
 
     return {
@@ -442,28 +510,30 @@ class AdminAttendanceProvider extends ChangeNotifier {
       final today = DateTime.now();
       final startOfDay = DateTime(today.year, today.month, today.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
-      
-      print('🔍 Loading attendance for: ${startOfDay.toString()} to ${endOfDay.toString()}');
-      
+
+      print(
+          '🔍 Loading attendance for: ${startOfDay.toString()} to ${endOfDay.toString()}');
+
       final records = await _attendanceService.getAttendanceByDateRange(
         startOfDay,
         endOfDay,
       );
-      
+
       print('📊 Found ${records.length} attendance records');
       for (var record in records) {
-        print('  - ${record.userId}: ${record.status} (Check-in: ${record.checkInTime})');
+        print(
+            '  - ${record.userId}: ${record.status} (Check-in: ${record.checkInTime})');
       }
-      
+
       _todayAttendance = records;
       _calculateTodayStats();
-      
+
       print('📈 Calculated stats: $_todayStats');
     } catch (e) {
       print('❌ Error loading today\'s attendance: $e');
       _setError('Failed to load today\'s attendance: $e');
     }
-    
+
     _setLoading(false);
   }
 
@@ -473,19 +543,21 @@ class AdminAttendanceProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      final startOfMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
-      final endOfMonth = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
-      
+      final startOfMonth =
+          DateTime(DateTime.now().year, DateTime.now().month, 1);
+      final endOfMonth =
+          DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
+
       final records = await _attendanceService.getAttendanceByDateRange(
         startOfMonth,
         endOfMonth,
       );
-      
+
       _calculateMonthlyStats(records);
     } catch (e) {
       _setError('Failed to load monthly stats: $e');
     }
-    
+
     _setLoading(false);
   }
 
@@ -512,12 +584,12 @@ class AdminAttendanceProvider extends ChangeNotifier {
     final present = records.where((a) => a.status == 'present').length;
     final late = records.where((a) => a.status == 'late').length;
     final absent = records.where((a) => a.status == 'absent').length;
-    
+
     final totalWorkingMinutes = records
         .where((a) => a.hasCheckedOut)
         .fold(0, (sum, a) => sum + a.totalMinutes);
-    
-    final averageWorkingHours = records.isNotEmpty 
+
+    final averageWorkingHours = records.isNotEmpty
         ? (totalWorkingMinutes / records.length / 60).toStringAsFixed(1)
         : '0.0';
 
@@ -539,7 +611,7 @@ class AdminAttendanceProvider extends ChangeNotifier {
   }
 
   // Employee Management Methods
-  
+
   /// Load all employees
   Future<void> loadEmployees() async {
     _setLoading(true);
@@ -547,19 +619,17 @@ class AdminAttendanceProvider extends ChangeNotifier {
 
     try {
       // Load users from Firestore
-      final QuerySnapshot snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .get();
-      
+      final QuerySnapshot snapshot =
+          await FirebaseFirestore.instance.collection('users').get();
+
       _employees = snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
         return UserModel.fromJson({...data, 'userId': doc.id});
       }).toList();
-      
     } catch (e) {
       _setError('Failed to load employees: $e');
     }
-    
+
     _setLoading(false);
   }
 
@@ -574,7 +644,7 @@ class AdminAttendanceProvider extends ChangeNotifier {
           .collection('users')
           .doc(employee.userId)
           .set(employee.toJson());
-      
+
       // Update local list
       _employees.add(employee);
       notifyListeners();
@@ -598,7 +668,7 @@ class AdminAttendanceProvider extends ChangeNotifier {
           .collection('users')
           .doc(employee.userId)
           .update(employee.toJson());
-      
+
       // Update in local list
       final index = _employees.indexWhere((e) => e.userId == employee.userId);
       if (index != -1) {
@@ -624,11 +694,8 @@ class AdminAttendanceProvider extends ChangeNotifier {
 
     try {
       // Delete from Firebase/Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .delete();
-      
+      await FirebaseFirestore.instance.collection('users').doc(userId).delete();
+
       // Remove from local list
       _employees.removeWhere((e) => e.userId == userId);
       notifyListeners();
@@ -658,5 +725,4 @@ class AdminAttendanceProvider extends ChangeNotifier {
       return null;
     }
   }
-
 }

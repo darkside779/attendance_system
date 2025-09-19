@@ -8,8 +8,12 @@ import '../../providers/auth_provider.dart';
 import '../../providers/attendance_provider.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/settings_provider.dart';
-import '../../widgets/custom_button.dart';
+import '../../providers/shift_provider.dart';
+import '../../widgets/loading_widget.dart';
+import 'face_management_screen.dart';
 import '../../widgets/attendance_card.dart';
+import '../../widgets/custom_button.dart';
+import '../../widgets/system_lock_guard.dart';
 import '../../models/settings_model.dart';
 import '../auth/login_screen.dart';
 import 'check_in_screen.dart';
@@ -43,20 +47,22 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
     final attendanceProvider = Provider.of<AttendanceProvider>(context, listen: false);
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+    final shiftProvider = Provider.of<ShiftProvider>(context, listen: false);
     
     if (authProvider.currentUser != null) {
+      // Load shift data first
+      await shiftProvider.loadShifts();
+      
       // Load today's attendance
       await attendanceProvider.loadTodayAttendance(authProvider.currentUser!.userId);
       
-      if (!mounted) return;
+      // Load settings
+      if (!settingsProvider.hasSettings) {
+        await settingsProvider.initialize();
+      }
       
-      // Load settings first
-      await settingsProvider.loadSettings();
-      
-      if (!mounted) return;
-      
-      // Initialize location with company location from settings
-      if (settingsProvider.companyLocation != null) {
+      // Initialize location if settings are configured
+      if (settingsProvider.isLocationConfigured) {
         await locationProvider.initialize(settingsProvider.companyLocation!);
         await locationProvider.getCurrentLocation();
       }
@@ -65,7 +71,8 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SystemLockGuard(
+      child: Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: const [
@@ -98,6 +105,7 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
             label: 'Profile',
           ),
         ],
+      ),
       ),
     );
   }
@@ -184,6 +192,13 @@ class _HomeTab extends StatelessWidget {
                 
                 const SizedBox(height: 20),
                 
+                // Shift Status Message
+                if (attendanceProvider.shiftStatusMessage.isNotEmpty)
+                  _buildShiftStatusMessage(context, attendanceProvider),
+                
+                // Shift Information
+                _buildShiftInformation(context),
+                
                 // Quick Actions
                 _buildQuickActions(context),
                 
@@ -262,19 +277,19 @@ class _HomeTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Location Not Configured',
                   style: TextStyle(
-                    fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: AppColors.warning,
                   ),
                 ),
-                const Text(
-                  'Admin needs to configure company location settings for attendance tracking.',
+                const SizedBox(height: 4),
+                Text(
+                  'Please contact your administrator to configure the company location for attendance tracking.',
                   style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    color: AppColors.warning.withOpacity(0.8),
                   ),
                 ),
               ],
@@ -282,6 +297,296 @@ class _HomeTab extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildShiftStatusMessage(BuildContext context, AttendanceProvider attendanceProvider) {
+    final isCompleted = attendanceProvider.hasCompletedShiftToday;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isCompleted 
+            ? Colors.green.withOpacity(0.1)
+            : Colors.blue.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCompleted 
+              ? Colors.green.withOpacity(0.3)
+              : Colors.blue.withOpacity(0.3)
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isCompleted ? Icons.check_circle_outline : Icons.info_outline,
+            color: isCompleted ? Colors.green : Colors.blue,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isCompleted ? 'Shift Completed' : 'Check-in Information',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isCompleted ? Colors.green : Colors.blue,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  attendanceProvider.shiftStatusMessage,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: (isCompleted ? Colors.green : Colors.blue).withOpacity(0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShiftInformation(BuildContext context) {
+    return Consumer<ShiftProvider>(
+      builder: (context, shiftProvider, child) {
+        if (shiftProvider.isLoading) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.lightGrey),
+            ),
+            child: const Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text('Loading shift information...'),
+              ],
+            ),
+          );
+        }
+
+        if (!shiftProvider.hasShifts) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'No Shifts Configured',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.warning,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Contact your administrator to configure work shifts.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.warning.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final currentShift = shiftProvider.getCurrentShift(DateTime.now());
+        final availableShifts = shiftProvider.getAvailableShiftsForCheckIn(DateTime.now());
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.lightGrey),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule_outlined,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Shift Information',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 12),
+              
+              if (currentShift != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.work_outline,
+                        color: AppColors.success,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Current Shift: ${currentShift.shiftName}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.success,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Time: ${currentShift.formattedShiftTime}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.success.withOpacity(0.8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (availableShifts.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            color: AppColors.primary,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Available for Check-in:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...availableShifts.map((shift) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '• ${shift.shiftName}: ${shift.formattedShiftTime}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.primary.withOpacity(0.8),
+                          ),
+                        ),
+                      )),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.textSecondary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        color: AppColors.textSecondary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          shiftProvider.getShiftStatusMessage(),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              
+              const SizedBox(height: 12),
+              
+              // All shifts summary
+              Text(
+                'All Shifts (${shiftProvider.activeShifts.length}):',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...shiftProvider.activeShifts.map((shift) => Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  '• ${shift.shiftName}: ${shift.formattedShiftTime}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              )),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -548,7 +853,11 @@ class _ProfileTab extends StatelessWidget {
                   icon: Icons.face,
                   title: 'Face Recognition',
                   subtitle: 'Manage face data',
-                  onTap: () => _showComingSoon(context),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const FaceManagementScreen(),
+                    ),
+                  ),
                 ),
                 _ProfileOption(
                   icon: Icons.security,

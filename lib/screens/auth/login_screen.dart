@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, avoid_print
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/custom_button.dart';
 import '../admin/admin_dashboard.dart';
 import '../employee/home_screen.dart';
+import '../super_admin/super_admin_home_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,12 +41,22 @@ class _LoginScreenState extends State<LoginScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (authProvider.isAuthenticated && authProvider.currentUser != null) {
               final user = authProvider.currentUser!;
+              print('🔍 Login navigation - Role: ${user.role}, isSuperAdmin: ${user.isSuperAdmin}, isAdmin: ${user.isAdmin}');
+              
+              Widget destination;
+              if (user.isSuperAdmin) {
+                print('🚀 Login: Navigating to SuperAdminHomeScreen');
+                destination = const SuperAdminHomeScreen();
+              } else if (user.isAdmin) {
+                print('🚀 Login: Navigating to AdminDashboard');
+                destination = const AdminDashboard();
+              } else {
+                print('🚀 Login: Navigating to EmployeeHomeScreen');
+                destination = const EmployeeHomeScreen();
+              }
+              
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => user.isAdmin 
-                    ? const AdminDashboard()
-                    : const EmployeeHomeScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => destination),
               );
             }
           });

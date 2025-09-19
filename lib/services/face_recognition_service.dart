@@ -229,6 +229,48 @@ class FaceRecognitionService {
     }
   }
 
+  /// Register face data from camera (without actual image file)
+  Future<FaceRegistrationResult> registerFaceDataFromCamera({
+    required String userId,
+    required Map<String, dynamic> faceFeatures,
+  }) async {
+    try {
+      // Store face features as JSON string
+      final faceDataJson = _convertFaceFeaturesToJson(faceFeatures);
+      
+      // Update user document with face data
+      final user = await _firestoreService.getUser(userId);
+      if (user != null) {
+        final updatedUser = user.copyWith(faceData: faceDataJson);
+        final success = await _firestoreService.updateUser(updatedUser);
+        
+        if (success) {
+          return FaceRegistrationResult(
+            success: true,
+            message: 'Face registered successfully!',
+            faceImageUrl: null, // No image URL since we're using camera widget
+          );
+        } else {
+          return FaceRegistrationResult(
+            success: false,
+            message: 'Failed to save face data.',
+          );
+        }
+      } else {
+        return FaceRegistrationResult(
+          success: false,
+          message: 'User not found.',
+        );
+      }
+    } catch (e) {
+      print('Error registering face data: $e');
+      return FaceRegistrationResult(
+        success: false,
+        message: 'Error registering face: $e',
+      );
+    }
+  }
+
   /// Check if user has registered face
   Future<bool> hasRegisteredFace(String userId) async {
     try {

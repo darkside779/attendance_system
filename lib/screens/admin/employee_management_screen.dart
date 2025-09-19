@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../providers/attendance_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/shift_provider.dart';
+import '../../models/shift_model.dart';
 import 'employee_history_screen.dart';
 import '../../models/attendance_model.dart';
 import '../../widgets/loading_widget.dart';
@@ -55,8 +57,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
           ),
         ],
       ),
-      body: Consumer<AdminAttendanceProvider>(
-        builder: (context, provider, child) {
+      body: Consumer2<AdminAttendanceProvider, ShiftProvider>(
+        builder: (context, provider, shiftProvider, child) {
           if (provider.isLoading) {
             return const LoadingWidget();
           }
@@ -65,7 +67,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
             children: [
               _buildFiltersAndSearch(),
               Expanded(
-                child: _buildEmployeeList(provider),
+                child: _buildEmployeeList(provider, shiftProvider),
               ),
             ],
           );
@@ -149,8 +151,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     );
   }
 
-  Widget _buildEmployeeList(AdminAttendanceProvider provider) {
-    final filteredEmployees = _getFilteredEmployees(provider);
+  Widget _buildEmployeeList(AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+    final filteredEmployees = _getFilteredEmployees(provider, shiftProvider);
 
     if (filteredEmployees.isEmpty) {
       return Center(
@@ -181,23 +183,85 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final employee = filteredEmployees[index];
-        final attendance = provider.todayAttendance.firstWhere(
-          (a) => a.userId == employee.userId,
-          orElse: () => AttendanceModel(
-            attendanceId: '',
-            userId: employee.userId,
-            date: DateTime.now(),
-            status: 'absent',
-          ),
-        );
+        final attendance = provider.todayAttendance.where((a) => a.userId == employee.userId).firstOrNull;
         
-        return _buildEmployeeCard(employee, attendance, provider);
+        return _buildEmployeeCard(employee, attendance, provider, shiftProvider);
       },
     );
   }
 
-  List<UserModel> _getFilteredEmployees(AdminAttendanceProvider provider) {
-    List<UserModel> employees = List.from(provider.employees);
+  // Helper method to get employee's assigned shift
+  ShiftModel? _getEmployeeShift(UserModel employee, ShiftProvider shiftProvider) {
+    if (employee.assignedShiftId == null) return null;
+    return shiftProvider.shifts.firstWhere(
+      (shift) => shift.shiftId == employee.assignedShiftId,
+      orElse: () => ShiftModel(
+        shiftId: '',
+        shiftName: '',
+        startTime: '',
+        endTime: '',
+        workingDays: [],
+        gracePeriodMinutes: 0,
+        isActive: false,
+      ),
+    );
+  }
+
+  // Helper method to calculate shift-based status
+  ({String status, String? lateInfo}) _calculateShiftBasedStatus(
+    UserModel employee, 
+    AttendanceModel? attendance, 
+    ShiftProvider shiftProvider
+  ) {
+    if (attendance == null || attendance.checkInTime == null) {
+      return (status: 'absent', lateInfo: null);
+    }
+
+    final employeeShift = _getEmployeeShift(employee, shiftProvider);
+    if (employeeShift == null || employeeShift.shiftId.isEmpty) {
+      // No shift assigned, use default logic
+      return (status: attendance.status, lateInfo: null);
+    }
+
+    final checkInTime = attendance.checkInTime!;
+    final checkInMinutes = checkInTime.hour * 60 + checkInTime.minute;
+    
+    // Parse shift start and end times
+    final shiftStartParts = employeeShift.startTime.split(':');
+    final shiftStartMinutes = int.parse(shiftStartParts[0]) * 60 + int.parse(shiftStartParts[1]);
+    
+    final shiftEndParts = employeeShift.endTime.split(':');
+    final shiftEndMinutes = int.parse(shiftEndParts[0]) * 60 + int.parse(shiftEndParts[1]);
+    
+    // Check if check-in is outside the shift window (including reasonable buffer)
+    // Allow check-in up to 2 hours after shift end for flexibility
+    final extendedShiftEndMinutes = shiftEndMinutes + 120; // 2 hours buffer
+    
+    if (checkInMinutes < shiftStartMinutes || checkInMinutes > extendedShiftEndMinutes) {
+      return (status: 'absent', lateInfo: 'Check-in outside shift hours');
+    }
+
+    // Check if within normal shift hours
+    final graceEndMinutes = shiftStartMinutes + employeeShift.gracePeriodMinutes;
+
+    if (checkInMinutes <= shiftStartMinutes) {
+      return (status: 'present', lateInfo: null);
+    } else if (checkInMinutes <= graceEndMinutes) {
+      return (status: 'present', lateInfo: null);
+    } else {
+      final lateMinutes = checkInMinutes - graceEndMinutes;
+      final hours = lateMinutes ~/ 60;
+      final minutes = lateMinutes % 60;
+      final lateInfo = hours > 0 ? '${hours}h ${minutes}min late' : '${minutes}min late';
+      return (status: 'late', lateInfo: lateInfo);
+    }
+  }
+
+  List<UserModel> _getFilteredEmployees(AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+    // Filter out admin users - only show employees
+    List<UserModel> employees = provider.employees
+        .where((employee) => employee.role.toLowerCase() == 'employee')
+        .toList();
 
     // Apply search filter
     if (_searchQuery.isNotEmpty) {
@@ -208,54 +272,33 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       }).toList();
     }
 
-    // Apply status filter based on today's attendance records
+    // Apply status filter based on shift-based attendance calculation
     switch (_selectedFilter) {
       case 'present':
         employees = employees.where((employee) {
-          final attendance = provider.todayAttendance.firstWhere(
-            (a) => a.userId == employee.userId,
-            orElse: () => AttendanceModel(
-              attendanceId: '',
-              userId: employee.userId,
-              date: DateTime.now(),
-              status: 'absent',
-            ),
-          );
-          return attendance.status.toLowerCase() == 'present';
+          final attendance = provider.todayAttendance.where((a) => a.userId == employee.userId).firstOrNull;
+          final shiftBasedStatus = _calculateShiftBasedStatus(employee, attendance, shiftProvider);
+          return shiftBasedStatus.status.toLowerCase() == 'present';
         }).toList();
         break;
       case 'late':
         employees = employees.where((employee) {
-          final attendance = provider.todayAttendance.firstWhere(
-            (a) => a.userId == employee.userId,
-            orElse: () => AttendanceModel(
-              attendanceId: '',
-              userId: employee.userId,
-              date: DateTime.now(),
-              status: 'absent',
-            ),
-          );
-          return attendance.status.toLowerCase() == 'late';
+          final attendance = provider.todayAttendance.where((a) => a.userId == employee.userId).firstOrNull;
+          final shiftBasedStatus = _calculateShiftBasedStatus(employee, attendance, shiftProvider);
+          return shiftBasedStatus.status.toLowerCase() == 'late';
         }).toList();
         break;
       case 'absent':
         employees = employees.where((employee) {
-          final hasAttendance = provider.todayAttendance.any((a) => a.userId == employee.userId);
-          return !hasAttendance;
+          final attendance = provider.todayAttendance.where((a) => a.userId == employee.userId).firstOrNull;
+          final shiftBasedStatus = _calculateShiftBasedStatus(employee, attendance, shiftProvider);
+          return shiftBasedStatus.status.toLowerCase() == 'absent';
         }).toList();
         break;
       case 'checked_in':
         employees = employees.where((employee) {
-          final attendance = provider.todayAttendance.firstWhere(
-            (a) => a.userId == employee.userId,
-            orElse: () => AttendanceModel(
-              attendanceId: '',
-              userId: employee.userId,
-              date: DateTime.now(),
-              status: 'absent',
-            ),
-          );
-          return attendance.checkInTime != null && attendance.checkOutTime == null;
+          final attendance = provider.todayAttendance.where((a) => a.userId == employee.userId).firstOrNull;
+          return attendance != null && attendance.checkInTime != null && attendance.checkOutTime == null;
         }).toList();
         break;
     }
@@ -264,9 +307,11 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   }
 
 
-  Widget _buildEmployeeCard(UserModel employee, AttendanceModel? attendance, AdminAttendanceProvider provider) {
-    final status = attendance?.status ?? 'absent';
-    final statusColor = _getStatusColor(status);
+  Widget _buildEmployeeCard(UserModel employee, AttendanceModel? attendance, AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+    // Calculate shift-based status
+    final shiftBasedStatus = _calculateShiftBasedStatus(employee, attendance, shiftProvider);
+    final statusColor = _getStatusColor(shiftBasedStatus.status);
+    final employeeShift = _getEmployeeShift(employee, shiftProvider);
     
     return Card(
       elevation: 2,
@@ -303,43 +348,88 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    status.toUpperCase(),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        shiftBasedStatus.status.toUpperCase(),
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (shiftBasedStatus.lateInfo != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          shiftBasedStatus.lateInfo!,
+                          style: TextStyle(
+                            color: AppColors.warning,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                if (attendance?.hasCheckedIn == true) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'In: ${_formatTime(attendance!.checkInTime!)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-                if (attendance?.hasCheckedOut == true) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'Out: ${_formatTime(attendance!.checkOutTime!)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (attendance?.hasCheckedIn == true) ...[
+                      Text(
+                        'In: ${_formatTime(attendance!.checkInTime!)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    if (attendance?.hasCheckedOut == true) ...[
+                      const SizedBox(width: 12),
+                      Text(
+                        'Out: ${_formatTime(attendance!.checkOutTime!)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    if (employeeShift != null && employeeShift.shiftId.isNotEmpty) ...[
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          employeeShift.shiftName,
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ],
@@ -367,7 +457,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                 ],
               ),
             ),
-            if (attendance == null || attendance.status.toLowerCase() != 'absent')
+            if (shiftBasedStatus.status.toLowerCase() != 'absent')
               const PopupMenuItem(
                 value: 'mark_absent',
                 child: Row(

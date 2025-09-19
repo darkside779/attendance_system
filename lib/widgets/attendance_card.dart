@@ -185,111 +185,175 @@ class AttendanceStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color statusColor;
+    Color statusBackgroundColor;
     IconData statusIcon;
     
     switch (status.toLowerCase()) {
       case 'present':
-        statusColor = AppColors.success;
-        statusIcon = Icons.check_circle;
+        statusColor = const Color(0xFF22C55E);
+        statusBackgroundColor = const Color(0xFF22C55E).withOpacity(0.1);
+        statusIcon = Icons.check_circle_rounded;
         break;
       case 'late':
-        statusColor = AppColors.warning;
-        statusIcon = Icons.schedule;
+        statusColor = const Color(0xFFF59E0B);
+        statusBackgroundColor = const Color(0xFFF59E0B).withOpacity(0.1);
+        statusIcon = Icons.access_time_rounded;
         break;
       case 'absent':
-        statusColor = AppColors.error;
-        statusIcon = Icons.cancel;
+        statusColor = const Color(0xFFEF4444);
+        statusBackgroundColor = const Color(0xFFEF4444).withOpacity(0.1);
+        statusIcon = Icons.cancel_rounded;
         break;
       default:
-        statusColor = AppColors.grey;
-        statusIcon = Icons.help_outline;
+        statusColor = const Color(0xFF6B7280);
+        statusBackgroundColor = const Color(0xFF6B7280).withOpacity(0.1);
+        statusIcon = Icons.help_outline_rounded;
     }
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+    final bool isComplete = checkOutTime != null && checkOutTime != '--:--';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.08),
+          width: 1,
+        ),
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // Header Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    date,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                // Header Row with Date and Status
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      date,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F2937),
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: statusBackgroundColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: statusColor.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            statusIcon,
+                            color: statusColor,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            status.toLowerCase() == 'present' ? 'Present' : status,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 16),
+                
+                // Time Details Container
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                      width: 1,
                     ),
                   ),
-                  Row(
+                  child: Row(
                     children: [
-                      Icon(
-                        statusIcon,
-                        color: statusColor,
-                        size: 20,
+                      // Check In
+                      Expanded(
+                        child: _ModernTimeDetail(
+                          label: 'Check In',
+                          time: checkInTime,
+                          icon: Icons.login_rounded,
+                          color: const Color(0xFF3B82F6),
+                        ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        status,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: statusColor,
+                      
+                      // Divider
+                      Container(
+                        height: 50,
+                        width: 1,
+                        color: const Color(0xFFE2E8F0),
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      
+                      // Check Out
+                      Expanded(
+                        child: _ModernTimeDetail(
+                          label: 'Check Out',
+                          time: checkOutTime ?? '--:--',
+                          icon: Icons.logout_rounded,
+                          color: isComplete ? const Color(0xFF10B981) : const Color(0xFF9CA3AF),
+                        ),
+                      ),
+                      
+                      // Divider
+                      Container(
+                        height: 50,
+                        width: 1,
+                        color: const Color(0xFFE2E8F0),
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      
+                      // Total Hours
+                      Expanded(
+                        child: _ModernTimeDetail(
+                          label: 'Total',
+                          time: totalHours,
+                          icon: Icons.schedule_rounded,
+                          color: const Color(0xFF8B5CF6),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // Time Details
-              Row(
-                children: [
-                  Expanded(
-                    child: _TimeDetail(
-                      label: 'Check In',
-                      time: checkInTime,
-                      icon: Icons.login,
-                    ),
-                  ),
-                  Container(
-                    height: 40,
-                    width: 1,
-                    color: AppColors.lightGrey,
-                  ),
-                  Expanded(
-                    child: _TimeDetail(
-                      label: 'Check Out',
-                      time: checkOutTime ?? '--:--',
-                      icon: Icons.logout,
-                    ),
-                  ),
-                  Container(
-                    height: 40,
-                    width: 1,
-                    color: AppColors.lightGrey,
-                  ),
-                  Expanded(
-                    child: _TimeDetail(
-                      label: 'Total',
-                      time: totalHours,
-                      icon: Icons.schedule,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -297,41 +361,54 @@ class AttendanceStatusCard extends StatelessWidget {
   }
 }
 
-class _TimeDetail extends StatelessWidget {
+class _ModernTimeDetail extends StatelessWidget {
   final String label;
   final String time;
   final IconData icon;
+  final Color color;
 
-  const _TimeDetail({
+  const _ModernTimeDetail({
     required this.label,
     required this.time,
     required this.icon,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          icon,
-          size: 20,
-          color: AppColors.primary,
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: color,
+          ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           label,
           style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF64748B),
+            letterSpacing: 0.2,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           time,
           style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1E293B),
+            letterSpacing: -0.3,
           ),
         ),
       ],

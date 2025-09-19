@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, unused_import
+// ignore_for_file: deprecated_member_use, unused_import, avoid_print
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/custom_button.dart';
 import '../admin/admin_dashboard.dart';
 import '../employee/home_screen.dart';
+import '../super_admin/super_admin_home_screen.dart';
 import '../../widgets/loading_widget.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -56,12 +57,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
             if (authProvider.isAuthenticated &&
                 authProvider.currentUser != null) {
               final user = authProvider.currentUser!;
+              print('🔍 Registration navigation - Role: ${user.role}, isSuperAdmin: ${user.isSuperAdmin}, isAdmin: ${user.isAdmin}');
+              
+              Widget destination;
+              if (user.isSuperAdmin) {
+                print('🚀 Registration: Navigating to SuperAdminHomeScreen');
+                destination = const SuperAdminHomeScreen();
+              } else if (user.isAdmin) {
+                print('🚀 Registration: Navigating to AdminDashboard');
+                destination = const AdminDashboard();
+              } else {
+                print('🚀 Registration: Navigating to EmployeeHomeScreen');
+                destination = const EmployeeHomeScreen();
+              }
+              
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => user.isAdmin
-                      ? const AdminDashboard()
-                      : const EmployeeHomeScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => destination),
               );
             }
           });

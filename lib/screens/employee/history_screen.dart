@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/attendance_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/shift_provider.dart';
+import '../../models/shift_model.dart';
 import '../../widgets/attendance_card.dart';
 import '../../widgets/loading_widget.dart';
 import '../../models/attendance_model.dart';
@@ -37,6 +39,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
   Future<void> _loadAttendanceHistory() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final attendanceProvider = Provider.of<AttendanceProvider>(context, listen: false);
+    final shiftProvider = Provider.of<ShiftProvider>(context, listen: false);
     
     if (authProvider.currentUser != null) {
       await attendanceProvider.loadAttendanceHistory(
@@ -45,6 +48,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
       await attendanceProvider.loadMonthlyStats(
         authProvider.currentUser!.userId,
       );
+      await shiftProvider.loadShifts();
     }
   }
 
@@ -89,8 +93,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
   }
 
   Widget _buildThisMonthTab() {
-    return Consumer<AttendanceProvider>(
-      builder: (context, attendanceProvider, child) {
+    return Consumer2<AttendanceProvider, ShiftProvider>(
+      builder: (context, attendanceProvider, shiftProvider, child) {
         if (attendanceProvider.isLoading) {
           return const Center(child: LoadingWidget());
         }
@@ -108,17 +112,17 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Monthly Summary
-              _buildMonthlySummary(attendanceProvider),
+              _buildMonthlySummary(attendanceProvider, shiftProvider),
               
               const SizedBox(height: 20),
               
               // Calendar View
-              _buildCalendarView(monthlyAttendance),
+              _buildCalendarView(monthlyAttendance, shiftProvider),
               
               const SizedBox(height: 20),
               
               // Recent Records
-              _buildRecentRecords(monthlyAttendance),
+              _buildRecentRecords(monthlyAttendance, shiftProvider),
             ],
           ),
         );
@@ -127,18 +131,21 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
   }
 
   Widget _buildHistoryTab() {
-    return Consumer<AttendanceProvider>(
-      builder: (context, attendanceProvider, child) {
+    return Consumer2<AttendanceProvider, ShiftProvider>(
+      builder: (context, attendanceProvider, shiftProvider, child) {
         if (attendanceProvider.isLoading) {
           return const Center(child: LoadingWidget());
         }
 
         List<AttendanceModel> filteredHistory = attendanceProvider.attendanceHistory;
         
-        // Apply filter
+        // Apply filter with shift-based status
         if (_selectedFilter != 'all') {
           filteredHistory = filteredHistory
-              .where((attendance) => attendance.status.toLowerCase() == _selectedFilter)
+              .where((attendance) {
+                final shiftBasedStatus = _calculateShiftBasedStatus(attendance, shiftProvider);
+                return shiftBasedStatus.status.toLowerCase() == _selectedFilter;
+              })
               .toList();
         }
 
@@ -156,6 +163,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
                       itemCount: filteredHistory.length,
                       itemBuilder: (context, index) {
                         final attendance = filteredHistory[index];
+                        final shiftBasedStatus = _calculateShiftBasedStatus(attendance, shiftProvider);
                         return AttendanceStatusCard(
                           date: _formatDate(attendance.date),
                           checkInTime: attendance.checkInTime != null 
@@ -165,8 +173,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
                               ? _formatTime(attendance.checkOutTime!)
                               : null,
                           totalHours: attendance.getWorkingHours(),
-                          status: attendance.status,
-                          onTap: () => _showAttendanceDetails(attendance),
+                          status: shiftBasedStatus.status,
+                          onTap: () => _showAttendanceDetails(attendance, shiftProvider),
                         );
                       },
                     ),
@@ -178,8 +186,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
   }
 
   Widget _buildStatisticsTab() {
-    return Consumer<AttendanceProvider>(
-      builder: (context, attendanceProvider, child) {
+    return Consumer2<AttendanceProvider, ShiftProvider>(
+      builder: (context, attendanceProvider, shiftProvider, child) {
         if (attendanceProvider.isLoading) {
           return const Center(child: LoadingWidget());
         }
@@ -208,53 +216,148 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     );
   }
 
-  Widget _buildMonthlySummary(AttendanceProvider attendanceProvider) {
-    final stats = attendanceProvider.monthlyStats;
+  Widget _buildMonthlySummary(AttendanceProvider attendanceProvider, ShiftProvider shiftProvider) {
+    // Calculate shift-based monthly stats
+    final currentMonth = DateTime.now();
+    final monthlyAttendance = attendanceProvider.attendanceHistory
+        .where((attendance) => 
+            attendance.date.month == currentMonth.month &&
+            attendance.date.year == currentMonth.year)
+        .toList();
+    
+    int presentCount = 0;
+    int lateCount = 0;
+    int absentCount = 0;
+    
+    for (final attendance in monthlyAttendance) {
+      final shiftBasedStatus = _calculateShiftBasedStatus(attendance, shiftProvider);
+      switch (shiftBasedStatus.status.toLowerCase()) {
+        case 'present':
+          presentCount++;
+          break;
+        case 'late':
+          lateCount++;
+          break;
+        case 'absent':
+          absentCount++;
+          break;
+      }
+    }
+    
+    final stats = {
+      'present': presentCount,
+      'late': lateCount,
+      'absent': absentCount,
+    };
     
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 40,
+            offset: const Offset(0, 8),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.08),
+          width: 1,
         ),
-        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _getMonthYearString(DateTime.now()),
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.white,
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF3B82F6),
+                      const Color(0xFF1E40AF),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3B82F6).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.calendar_month_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _getMonthYearString(DateTime.now()),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1F2937),
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Monthly Summary',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          
+          const SizedBox(height: 24),
           
           Row(
             children: [
               Expanded(
-                child: _SummaryItem(
+                child: _ModernSummaryItem(
                   title: 'Present',
                   value: '${stats['present'] ?? 0}',
-                  color: AppColors.white,
+                  color: const Color(0xFF22C55E),
+                  icon: Icons.check_circle_rounded,
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
-                child: _SummaryItem(
+                child: _ModernSummaryItem(
                   title: 'Absent',
                   value: '${stats['absent'] ?? 0}',
-                  color: AppColors.white,
+                  color: const Color(0xFFEF4444),
+                  icon: Icons.cancel_rounded,
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
-                child: _SummaryItem(
+                child: _ModernSummaryItem(
                   title: 'Late',
                   value: '${stats['late'] ?? 0}',
-                  color: AppColors.white,
+                  color: const Color(0xFFF59E0B),
+                  icon: Icons.access_time_rounded,
                 ),
               ),
             ],
@@ -264,60 +367,162 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     );
   }
 
-  Widget _buildCalendarView(List<AttendanceModel> monthlyAttendance) {
+  Widget _buildCalendarView(List<AttendanceModel> monthlyAttendance, ShiftProvider shiftProvider) {
+    final now = DateTime.now();
+    final firstDayOfMonth = DateTime(now.year, now.month, 1);
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final firstWeekday = firstDayOfMonth.weekday;
+    
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightGrey),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 15,
+            offset: const Offset(0, 3),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.08),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Calendar View',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.calendar_today_rounded,
+                  color: Color(0xFF8B5CF6),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Calendar View',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
           
-          // Simplified calendar grid
+          const SizedBox(height: 20),
+          
+          // Weekday headers
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) {
+              return SizedBox(
+                width: 32,
+                height: 32,
+                child: Center(
+                  child: Text(
+                    day,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Calendar grid
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
               childAspectRatio: 1,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
             ),
-            itemCount: 35, // 5 weeks
+            itemCount: 42, // 6 weeks max
             itemBuilder: (context, index) {
-              final dayNumber = index + 1;
-              final hasAttendance = monthlyAttendance.any(
-                (attendance) => attendance.date.day == dayNumber,
-              );
+              final dayOffset = index - (firstWeekday - 1);
+              final dayNumber = dayOffset + 1;
+              final isValidDay = dayNumber > 0 && dayNumber <= daysInMonth;
+              final isToday = isValidDay && dayNumber == now.day;
+              
+              AttendanceModel? dayAttendance;
+              if (isValidDay) {
+                try {
+                  dayAttendance = monthlyAttendance.where((attendance) => 
+                    attendance.date.day == dayNumber
+                  ).first;
+                } catch (_) {
+                  dayAttendance = null;
+                }
+              }
+              
+              Color? backgroundColor;
+              Color? borderColor;
+              Color textColor = const Color(0xFF6B7280);
+              
+              if (isValidDay) {
+                if (dayAttendance != null) {
+                  final shiftBasedStatus = _calculateShiftBasedStatus(dayAttendance, shiftProvider);
+                  switch (shiftBasedStatus.status.toLowerCase()) {
+                    case 'present':
+                      backgroundColor = const Color(0xFF22C55E).withOpacity(0.1);
+                      borderColor = const Color(0xFF22C55E);
+                      textColor = const Color(0xFF22C55E);
+                      break;
+                    case 'late':
+                      backgroundColor = const Color(0xFFF59E0B).withOpacity(0.1);
+                      borderColor = const Color(0xFFF59E0B);
+                      textColor = const Color(0xFFF59E0B);
+                      break;
+                    case 'absent':
+                      backgroundColor = const Color(0xFFEF4444).withOpacity(0.1);
+                      borderColor = const Color(0xFFEF4444);
+                      textColor = const Color(0xFFEF4444);
+                      break;
+                  }
+                } else {
+                  textColor = const Color(0xFF374151);
+                }
+                
+                if (isToday) {
+                  backgroundColor = const Color(0xFF3B82F6).withOpacity(0.1);
+                  borderColor = const Color(0xFF3B82F6);
+                  textColor = const Color(0xFF3B82F6);
+                }
+              }
               
               return Container(
-                margin: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
-                  color: hasAttendance ? AppColors.success.withOpacity(0.2) : null,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: hasAttendance ? AppColors.success : AppColors.lightGrey,
-                  ),
+                  color: backgroundColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: borderColor != null ? Border.all(color: borderColor, width: 1.5) : null,
                 ),
                 child: Center(
-                  child: Text(
-                    dayNumber <= 31 ? dayNumber.toString() : '',
+                  child: isValidDay ? Text(
+                    dayNumber.toString(),
                     style: TextStyle(
-                      fontSize: 12,
-                      color: hasAttendance ? AppColors.success : AppColors.textSecondary,
-                      fontWeight: hasAttendance ? FontWeight.w600 : null,
+                      fontSize: 14,
+                      fontWeight: (dayAttendance != null || isToday) ? FontWeight.w700 : FontWeight.w500,
+                      color: textColor,
                     ),
-                  ),
+                  ) : null,
                 ),
               );
             },
@@ -327,34 +532,112 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     );
   }
 
-  Widget _buildRecentRecords(List<AttendanceModel> monthlyAttendance) {
+  Widget _buildRecentRecords(List<AttendanceModel> monthlyAttendance, ShiftProvider shiftProvider) {
     final recentRecords = monthlyAttendance.take(5).toList();
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Recent Records',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.history_rounded,
+                color: Color(0xFF10B981),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Recent Records',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1F2937),
+                letterSpacing: -0.3,
+              ),
+            ),
+            const Spacer(),
+            if (recentRecords.length > 3)
+              TextButton(
+                onPressed: () {
+                  // Navigate to full history
+                },
+                child: const Text(
+                  'View All',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF3B82F6),
+                  ),
+                ),
+              ),
+          ],
         ),
-        const SizedBox(height: 12),
         
-        ...recentRecords.map((attendance) => AttendanceStatusCard(
-          date: _formatDate(attendance.date),
-          checkInTime: attendance.checkInTime != null 
-              ? _formatTime(attendance.checkInTime!)
-              : '--:--',
-          checkOutTime: attendance.checkOutTime != null 
-              ? _formatTime(attendance.checkOutTime!)
-              : null,
-          totalHours: attendance.getWorkingHours(),
-          status: attendance.status,
-          onTap: () => _showAttendanceDetails(attendance),
-        )),
+        const SizedBox(height: 16),
+        
+        if (recentRecords.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.grey.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: const Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.event_busy_rounded,
+                    size: 48,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'No attendance records yet',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Your attendance history will appear here',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFFB5B7C1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ...recentRecords.map((attendance) {
+            final shiftBasedStatus = _calculateShiftBasedStatus(attendance, shiftProvider);
+            return AttendanceStatusCard(
+              date: _formatDate(attendance.date),
+              checkInTime: attendance.checkInTime != null 
+                  ? _formatTime(attendance.checkInTime!)
+                  : '--:--',
+              checkOutTime: attendance.checkOutTime != null 
+                  ? _formatTime(attendance.checkOutTime!)
+                  : null,
+              totalHours: attendance.getWorkingHours(),
+              status: shiftBasedStatus.status,
+              onTap: () => _showAttendanceDetails(attendance, shiftProvider),
+            );
+          }),
       ],
     );
   }
@@ -648,7 +931,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     }
   }
 
-  void _showAttendanceDetails(AttendanceModel attendance) {
+  void _showAttendanceDetails(AttendanceModel attendance, ShiftProvider shiftProvider) {
+    final shiftBasedStatus = _calculateShiftBasedStatus(attendance, shiftProvider);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -657,7 +941,9 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DetailRow('Status', attendance.status),
+            _DetailRow('Status', shiftBasedStatus.status.toUpperCase()),
+            if (shiftBasedStatus.lateInfo != null)
+              _DetailRow('Late By', shiftBasedStatus.lateInfo!),
             _DetailRow('Check In', attendance.checkInTime != null 
                 ? _formatDateTime(attendance.checkInTime!)
                 : 'Not checked in'),
@@ -701,39 +987,134 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     ];
     return '${months[date.month - 1]} ${date.year}';
   }
+
+  // Helper method to get employee's assigned shift
+  ShiftModel? _getEmployeeShift(String userId, ShiftProvider shiftProvider) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUser;
+    if (currentUser?.assignedShiftId == null) return null;
+    
+    try {
+      return shiftProvider.shifts.firstWhere(
+        (shift) => shift.shiftId == currentUser!.assignedShiftId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Helper method to calculate shift-based status
+  ({String status, String? lateInfo}) _calculateShiftBasedStatus(
+    AttendanceModel attendance, 
+    ShiftProvider shiftProvider
+  ) {
+    if (attendance.checkInTime == null) {
+      return (status: 'absent', lateInfo: null);
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final employeeShift = _getEmployeeShift(authProvider.currentUser?.userId ?? '', shiftProvider);
+    if (employeeShift == null || employeeShift.shiftId.isEmpty) {
+      // No shift assigned, use stored status
+      return (status: attendance.status, lateInfo: null);
+    }
+
+    final checkInTime = attendance.checkInTime!;
+    final checkInMinutes = checkInTime.hour * 60 + checkInTime.minute;
+    
+    // Parse shift start and end times
+    final shiftStartParts = employeeShift.startTime.split(':');
+    final shiftStartMinutes = int.parse(shiftStartParts[0]) * 60 + int.parse(shiftStartParts[1]);
+    
+    final shiftEndParts = employeeShift.endTime.split(':');
+    final shiftEndMinutes = int.parse(shiftEndParts[0]) * 60 + int.parse(shiftEndParts[1]);
+    
+    // Check if check-in is outside the shift window (including reasonable buffer)
+    // Allow check-in up to 2 hours after shift end for flexibility
+    final extendedShiftEndMinutes = shiftEndMinutes + 120; // 2 hours buffer
+    
+    if (checkInMinutes < shiftStartMinutes || checkInMinutes > extendedShiftEndMinutes) {
+      return (status: 'absent', lateInfo: 'Check-in outside shift hours');
+    }
+
+    // Check if within normal shift hours
+    final graceEndMinutes = shiftStartMinutes + employeeShift.gracePeriodMinutes;
+
+    if (checkInMinutes <= shiftStartMinutes) {
+      return (status: 'present', lateInfo: null);
+    } else if (checkInMinutes <= graceEndMinutes) {
+      return (status: 'present', lateInfo: null);
+    } else {
+      final lateMinutes = checkInMinutes - graceEndMinutes;
+      final hours = lateMinutes ~/ 60;
+      final minutes = lateMinutes % 60;
+      final lateInfo = hours > 0 ? '${hours}h ${minutes}min late' : '${minutes}min late';
+      return (status: 'late', lateInfo: lateInfo);
+    }
+  }
 }
 
-class _SummaryItem extends StatelessWidget {
+class _ModernSummaryItem extends StatelessWidget {
   final String title;
   final String value;
   final Color color;
+  final IconData icon;
 
-  const _SummaryItem({
+  const _ModernSummaryItem({
     required this.title,
     required this.value,
     required this.color,
+    required this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.1),
+          width: 1,
         ),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 12,
-            color: color.withOpacity(0.8),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 20,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: color,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color.withOpacity(0.8),
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

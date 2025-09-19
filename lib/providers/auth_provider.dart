@@ -18,6 +18,7 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _currentUser != null;
   bool get isAdmin => _currentUser?.isAdmin ?? false;
+  bool get isSuperAdmin => _currentUser?.isSuperAdmin ?? false;
   bool get isEmployee => _currentUser?.isEmployee ?? false;
 
   AuthProvider() {

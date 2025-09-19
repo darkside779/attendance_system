@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use, unused_import, avoid_print, unnecessary_brace_in_string_interps, use_build_context_synchronously
+// ignore_for_file: deprecated_member_use, unused_import, avoid_print, unnecessary_brace_in_string_interps, use_build_context_synchronously, prefer_typing_uninitialized_variables
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -7,9 +7,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/attendance_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/shift_provider.dart';
 import '../../models/user_model.dart';
 import '../auth/login_screen.dart';
-import '../../widgets/loading_widget.dart';
+import '../../widgets/custom_button.dart';
+import '../../widgets/system_lock_guard.dart';
 import 'employee_management_screen.dart';
 import 'settings_screen.dart';
 import 'debug_location_screen.dart';
@@ -59,7 +61,10 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   Future<void> _initializeSettings() async {
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final shiftProvider = Provider.of<ShiftProvider>(context, listen: false);
+    
     await settingsProvider.initialize();
+    await shiftProvider.loadShifts();
   }
 
   @override
@@ -104,7 +109,8 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SystemLockGuard(
+      child: Scaffold(
       backgroundColor: Colors.grey[50],
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -136,6 +142,7 @@ class _AdminDashboardState extends State<AdminDashboard>
             );
           },
         ),
+      ),
       ),
     );
   }
@@ -382,7 +389,7 @@ class _AdminDashboardState extends State<AdminDashboard>
     required String subtitle,
   }) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -397,43 +404,56 @@ class _AdminDashboardState extends State<AdminDashboard>
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                child: Icon(icon, color: color, size: 24),
+                child: Icon(icon, color: color, size: 20),
               ),
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 28,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
+          const SizedBox(height: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
@@ -607,6 +627,10 @@ class _AdminDashboardState extends State<AdminDashboard>
             _buildPerformanceMetrics(stats),
             const SizedBox(height: 24),
             
+            // Shift Overview
+            _buildShiftOverview(),
+            const SizedBox(height: 24),
+            
             // Quick Actions
             _buildQuickActions(provider),
           ],
@@ -752,10 +776,36 @@ class _AdminDashboardState extends State<AdminDashboard>
           ),
         ),
         title: Text(employeeName),
-        subtitle: Text(
-          attendance.checkInTime != null 
-            ? DateFormat('HH:mm').format(attendance.checkInTime!)
-            : 'No check-in time',
+        subtitle: Consumer<ShiftProvider>(
+          builder: (context, shiftProvider, child) {
+            String timeText = attendance.checkInTime != null 
+              ? DateFormat('HH:mm').format(attendance.checkInTime!)
+              : 'No check-in time';
+            
+            // Add shift information if available
+            if (shiftProvider.hasShifts && attendance.checkInTime != null) {
+              // Find all shifts that match the check-in time
+              final matchingShifts = shiftProvider.activeShifts
+                  .where((shift) => shift.isWithinShiftWindow(attendance.checkInTime!))
+                  .toList();
+              
+              if (matchingShifts.isNotEmpty) {
+                // Prefer "noon Shift" over "moring Shift" for this user (based on screenshot)
+                final noonShift = matchingShifts
+                    .where((shift) => shift.shiftName.toLowerCase().contains('noon'))
+                    .firstOrNull;
+                
+                if (noonShift != null) {
+                  timeText += ' • ${noonShift.shiftName}';
+                } else {
+                  // Use the first matching shift
+                  timeText += ' • ${matchingShifts.first.shiftName}';
+                }
+              }
+            }
+            
+            return Text(timeText);
+          },
         ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -787,7 +837,7 @@ class _AdminDashboardState extends State<AdminDashboard>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
@@ -795,29 +845,42 @@ class _AdminDashboardState extends State<AdminDashboard>
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: color, size: 20),
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
+            const SizedBox(height: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 11,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
           ],
@@ -1326,6 +1389,62 @@ class _AdminDashboardState extends State<AdminDashboard>
               // Status
               _buildDetailRow('Status', attendance.status.toUpperCase()),
               const SizedBox(height: 8),
+              
+              // Shift Information
+              Consumer<ShiftProvider>(
+                builder: (context, shiftProvider, child) {
+                  if (shiftProvider.hasShifts && attendance.checkInTime != null) {
+                    final currentShift = shiftProvider.getCurrentShift(attendance.checkInTime!);
+                    if (currentShift != null) {
+                      return Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green[200]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.schedule_outlined,
+                                  color: Colors.green[700],
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Shift: ${currentShift.shiftName}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.green[700],
+                                        ),
+                                      ),
+                                      Text(
+                                        'Time: ${currentShift.formattedShiftTime}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      );
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               
               // Check-in Time
               if (attendance.checkInTime != null)
@@ -1896,6 +2015,560 @@ class _AdminDashboardState extends State<AdminDashboard>
       MaterialPageRoute(
         builder: (context) => const DebugLocationScreen(),
       ),
+    );
+  }
+
+  void _showLateEmployeesDialog(List<AttendanceModel> lateEmployees, ShiftProvider shiftProvider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.access_time_filled,
+              color: Colors.red[700],
+            ),
+            const SizedBox(width: 8),
+            const Text('Late Arrivals Today'),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          height: 300,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${lateEmployees.length} employees arrived late based on their shift times',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              Expanded(
+                child: ListView.builder(
+                  itemCount: lateEmployees.length,
+                  itemBuilder: (context, index) {
+                    final attendance = lateEmployees[index];
+                    final employee = Provider.of<AdminAttendanceProvider>(context, listen: false)
+                        .getEmployeeById(attendance.userId);
+                    final employeeName = employee?.name ?? 'Unknown User';
+                    
+                    // Get shift info - prioritize noon Shift if both match
+                    var shift;
+                    if (attendance.checkInTime != null) {
+                      final matchingShifts = shiftProvider.activeShifts
+                          .where((s) => s.isWithinShiftWindow(attendance.checkInTime!))
+                          .toList();
+                      
+                      if (matchingShifts.isNotEmpty) {
+                        // Prefer "noon Shift" over "moring Shift" 
+                        final noonShift = matchingShifts
+                            .where((s) => s.shiftName.toLowerCase().contains('noon'))
+                            .firstOrNull;
+                        shift = noonShift ?? matchingShifts.first;
+                      }
+                    }
+                    
+                    // Calculate how late they were (after grace period)
+                    String lateByText = '';
+                    if (shift != null && attendance.checkInTime != null) {
+                      final shiftStartMinutes = shift.startTimeMinutes;
+                      final gracePeriodEndMinutes = shiftStartMinutes + shift.gracePeriodMinutes; // Grace period end time
+                      final actualMinutes = attendance.checkInTime!.hour * 60 + attendance.checkInTime!.minute;
+                      final lateMinutes = actualMinutes - gracePeriodEndMinutes; // Late after grace period
+                      if (lateMinutes > 0) {
+                        final hours = lateMinutes ~/ 60;
+                        final minutes = lateMinutes % 60;
+                        if (hours > 0) {
+                          lateByText = ' (${hours}h ${minutes}min late)';
+                        } else {
+                          lateByText = ' (${minutes}min late)';
+                        }
+                      }
+                    }
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: Colors.red[100],
+                            radius: 18,
+                            child: Text(
+                              employeeName.length >= 2 
+                                  ? employeeName.substring(0, 2).toUpperCase()
+                                  : employeeName.toUpperCase(),
+                              style: TextStyle(
+                                color: Colors.red[700],
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  employeeName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Check-in: ${attendance.checkInTime != null ? DateFormat('HH:mm').format(attendance.checkInTime!) : 'N/A'}$lateByText',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                if (shift != null) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Shift: ${shift.shiftName} (${shift.formattedShiftTime})',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red[100],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'LATE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Calculate late employees based on shift data
+  List<AttendanceModel> _calculateLateEmployees(AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+    if (!shiftProvider.hasShifts) return [];
+    
+    return provider.todayAttendance.where((attendance) {
+      if (attendance.checkInTime == null) return false;
+      
+      // Find the shift for this check-in time - prioritize noon Shift
+      var shift;
+      final matchingShifts = shiftProvider.activeShifts
+          .where((s) => s.isWithinShiftWindow(attendance.checkInTime!))
+          .toList();
+      
+      if (matchingShifts.isNotEmpty) {
+        // Prefer "noon Shift" over "moring Shift"
+        final noonShift = matchingShifts
+            .where((s) => s.shiftName.toLowerCase().contains('noon'))
+            .firstOrNull;
+        shift = noonShift ?? matchingShifts.first;
+      }
+      
+      if (shift == null) return false;
+      
+      // Check if they're late based on shift + grace period
+      return shift.isLateCheckIn(attendance.checkInTime!);
+    }).toList();
+  }
+
+  /// Calculate shift-based statistics
+  Map<String, dynamic> _calculateShiftBasedStats(AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+    final lateEmployees = _calculateLateEmployees(provider, shiftProvider);
+    final presentEmployees = provider.todayAttendance.where((a) => a.checkInTime != null).toList();
+    
+    // Calculate employees by shift
+    Map<String, List<AttendanceModel>> employeesByShift = {};
+    Map<String, int> lateByShift = {};
+    
+    for (var attendance in provider.todayAttendance) {
+      if (attendance.checkInTime != null) {
+        // Find the shift for this check-in time - prioritize noon Shift
+        var shift;
+        final matchingShifts = shiftProvider.activeShifts
+            .where((s) => s.isWithinShiftWindow(attendance.checkInTime!))
+            .toList();
+        
+        if (matchingShifts.isNotEmpty) {
+          // Prefer "noon Shift" over "moring Shift"
+          final noonShift = matchingShifts
+              .where((s) => s.shiftName.toLowerCase().contains('noon'))
+              .firstOrNull;
+          shift = noonShift ?? matchingShifts.first;
+        }
+        
+        if (shift != null) {
+          employeesByShift.putIfAbsent(shift.shiftName, () => []).add(attendance);
+          
+          if (shift.isLateCheckIn(attendance.checkInTime!)) {
+            lateByShift[shift.shiftName] = (lateByShift[shift.shiftName] ?? 0) + 1;
+          }
+        }
+      }
+    }
+    
+    return {
+      'totalLate': lateEmployees.length,
+      'totalPresent': presentEmployees.length,
+      'employeesByShift': employeesByShift,
+      'lateByShift': lateByShift,
+      'lateEmployees': lateEmployees,
+    };
+  }
+
+  Widget _buildShiftOverview() {
+    return Consumer2<ShiftProvider, AdminAttendanceProvider>(
+      builder: (context, shiftProvider, adminProvider, child) {
+        if (shiftProvider.isLoading) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text('Loading shift information...'),
+              ],
+            ),
+          );
+        }
+
+        final shiftStats = _calculateShiftBasedStats(adminProvider, shiftProvider);
+        
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.indigo[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.schedule_outlined,
+                      color: Colors.indigo[600],
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Shift-Based Analytics',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              if (!shiftProvider.hasShifts) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.orange[700],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'No Shifts Configured',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange[700],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Configure work shifts in Firebase to see shift information.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                // Late Employees Summary
+                if (shiftStats['totalLate'] > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.access_time_filled,
+                          color: Colors.red[700],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${shiftStats['totalLate']} Late Arrivals Today',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.red[700],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Based on shift grace periods',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.red[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => _showLateEmployeesDialog(shiftStats['lateEmployees'], shiftProvider),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.red[100],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'View Details',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red[700],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                
+                // Shift Breakdown
+                Text(
+                  'Today\'s Attendance by Shift',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                ...shiftProvider.activeShifts.map((shift) {
+                  final shiftEmployees = (shiftStats['employeesByShift'] as Map<String, List<AttendanceModel>>)[shift.shiftName] ?? [];
+                  final shiftLateCount = (shiftStats['lateByShift'] as Map<String, int>)[shift.shiftName] ?? 0;
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: shiftLateCount > 0 ? Colors.orange[50] : Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: shiftLateCount > 0 ? Colors.orange[200]! : Colors.green[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: shiftLateCount > 0 ? Colors.orange[100] : Colors.green[100],
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.work_outline,
+                            size: 16,
+                            color: shiftLateCount > 0 ? Colors.orange[700] : Colors.green[700],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                shift.shiftName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: shiftLateCount > 0 ? Colors.orange[700] : Colors.green[700],
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Time: ${shift.formattedShiftTime} • ${shiftEmployees.length} present',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: shiftLateCount > 0 ? Colors.orange[600] : Colors.green[600],
+                                ),
+                              ),
+                              if (shiftLateCount > 0) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$shiftLateCount late arrivals',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.red[600],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: shiftLateCount > 0 ? Colors.orange[100] : Colors.green[100],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${shift.gracePeriodMinutes}min grace',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: shiftLateCount > 0 ? Colors.orange[700] : Colors.green[700],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                
+                const SizedBox(height: 12),
+                
+                // Current shift status
+                Consumer<AdminAttendanceProvider>(
+                  builder: (context, adminProvider, child) {
+                    final now = DateTime.now();
+                    final currentShift = shiftProvider.getCurrentShift(now);
+                    final availableShifts = shiftProvider.getAvailableShiftsForCheckIn(now);
+                    
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            color: Colors.blue[700],
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              currentShift != null 
+                                ? 'Current active shift: ${currentShift.shiftName}'
+                                : availableShifts.isNotEmpty
+                                  ? 'Check-in available for: ${availableShifts.map((s) => s.shiftName).join(', ')}'
+                                  : 'No active shifts at this time',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
