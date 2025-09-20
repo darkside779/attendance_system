@@ -5,17 +5,19 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/constants/app_strings.dart';
 import 'core/constants/app_colors.dart';
-import 'providers/auth_provider.dart';
 import 'providers/attendance_provider.dart';
+import 'providers/auth_provider.dart';
 import 'providers/location_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/shift_provider.dart';
 import 'providers/system_lock_provider.dart';
+import 'providers/incomplete_checkout_provider.dart';
 import 'screens/employee/home_screen.dart';
 import 'screens/admin/admin_dashboard.dart';
 import 'screens/super_admin/super_admin_home_screen.dart';
 import 'screens/system_locked_screen.dart';
 import 'screens/auth/login_screen.dart';
+import 'utils/initialize_system_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +26,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize system settings to prevent permission errors
+  await SystemSettingsInitializer.initializeSystemSettings();
 
   runApp(const MyApp());
 }
@@ -37,10 +42,12 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+        ChangeNotifierProvider(create: (_) => AdminAttendanceProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProvider(create: (_) => ShiftProvider()),
         ChangeNotifierProvider(create: (_) => SystemLockProvider()),
+        ChangeNotifierProvider(create: (_) => IncompleteCheckoutProvider()),
       ],
       child: MaterialApp(
         title: AppStrings.appName,

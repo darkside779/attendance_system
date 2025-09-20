@@ -14,6 +14,7 @@ import 'face_management_screen.dart';
 import '../../widgets/attendance_card.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/system_lock_guard.dart';
+import '../../widgets/incomplete_checkout_warning.dart';
 import '../../models/settings_model.dart';
 import '../auth/login_screen.dart';
 import 'check_in_screen.dart';
@@ -130,6 +131,9 @@ class _HomeTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Incomplete Checkout Warning
+                IncompleteCheckoutWarning(userId: user.userId),
+                
                 // Header
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

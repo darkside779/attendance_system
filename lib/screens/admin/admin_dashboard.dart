@@ -15,6 +15,9 @@ import '../../widgets/system_lock_guard.dart';
 import 'employee_management_screen.dart';
 import 'settings_screen.dart';
 import 'debug_location_screen.dart';
+import 'incomplete_checkout_management_screen.dart';
+import 'attendance_time_management_screen.dart';
+import '../../providers/incomplete_checkout_provider.dart';
 import '../../models/attendance_model.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -76,6 +79,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   Future<void> _loadData() async {
     final provider = context.read<AdminAttendanceProvider>();
+    final incompleteProvider = context.read<IncompleteCheckoutProvider>();
     print('🔄 Admin Dashboard: Loading data...');
     
     try {
@@ -91,6 +95,10 @@ class _AdminDashboardState extends State<AdminDashboard>
       
       await provider.loadMonthlyStats();
       print('✅ Monthly stats loaded: ${provider.todayStats}');
+      
+      // Load incomplete checkouts for notification badge
+      await incompleteProvider.loadIncompleteCheckouts();
+      print('✅ Incomplete checkouts loaded: ${incompleteProvider.incompleteCheckoutsCount} found');
     } catch (e) {
       print('❌ Error loading admin data: $e');
     }
@@ -183,6 +191,50 @@ class _AdminDashboardState extends State<AdminDashboard>
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
         ),
+        Consumer<IncompleteCheckoutProvider>(
+          builder: (context, incompleteProvider, child) {
+            return Stack(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const IncompleteCheckoutManagementScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.warning_outlined),
+                  tooltip: 'Incomplete Checkouts',
+                ),
+                if (incompleteProvider.hasIncompleteCheckouts)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '${incompleteProvider.incompleteCheckoutsCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
         PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'logout') {
@@ -190,15 +242,51 @@ class _AdminDashboardState extends State<AdminDashboard>
             } else if (value == 'settings') {
               _navigateToSettings();
             } else if (value == 'debug_location') {
-              _navigateToDebugLocation();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const DebugLocationScreen(),
+                ),
+              );
+            } else if (value == 'incomplete_checkouts') {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const IncompleteCheckoutManagementScreen(),
+                ),
+              );
+            } else if (value == 'time_management') {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const AttendanceTimeManagementScreen(),
+                ),
+              );
             }
           },
           itemBuilder: (context) => [
             const PopupMenuItem(
+              value: 'time_management',
+              child: Row(
+                children: [
+                  Icon(Icons.access_time, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Text('Time Management'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'incomplete_checkouts',
+              child: Row(
+                children: [
+                  Icon(Icons.warning, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Incomplete Checkouts'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
               value: 'settings',
               child: Row(
                 children: [
-                  Icon(Icons.settings),
+                  Icon(Icons.settings, color: Colors.blue),
                   SizedBox(width: 8),
                   Text('Settings'),
                 ],
@@ -1233,6 +1321,13 @@ class _AdminDashboardState extends State<AdminDashboard>
             mainAxisSpacing: 12,
             children: [
               _buildActionCard(
+                title: 'Time Management',
+                subtitle: 'Edit check-in/out times',
+                icon: Icons.access_time,
+                color: Colors.green,
+                onTap: _navigateToTimeManagement,
+              ),
+              _buildActionCard(
                 title: 'Export Report',
                 subtitle: 'Download attendance data',
                 icon: Icons.file_download,
@@ -1245,6 +1340,13 @@ class _AdminDashboardState extends State<AdminDashboard>
                 icon: Icons.insert_chart,
                 color: Colors.purple,
                 onTap: _showReports,
+              ),
+              _buildActionCard(
+                title: 'Incomplete Checkouts',
+                subtitle: 'Manage missing checkouts',
+                icon: Icons.warning,
+                color: Colors.orange,
+                onTap: _navigateToIncompleteCheckouts,
               ),
             ],
           ),
@@ -2010,13 +2112,22 @@ class _AdminDashboardState extends State<AdminDashboard>
     );
   }
 
-  void _navigateToDebugLocation() {
+  void _navigateToTimeManagement() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const DebugLocationScreen(),
+        builder: (context) => const AttendanceTimeManagementScreen(),
       ),
     );
   }
+
+  void _navigateToIncompleteCheckouts() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const IncompleteCheckoutManagementScreen(),
+      ),
+    );
+  }
+
 
   void _showLateEmployeesDialog(List<AttendanceModel> lateEmployees, ShiftProvider shiftProvider) {
     showDialog(
