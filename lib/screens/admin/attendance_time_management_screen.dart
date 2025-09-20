@@ -1,10 +1,8 @@
-// ignore_for_file: avoid_print, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
-
 import '../../models/user_model.dart';
 import '../../models/attendance_model.dart';
+import 'package:intl/intl.dart';
 
 class AttendanceTimeManagementScreen extends StatefulWidget {
   const AttendanceTimeManagementScreen({super.key});
@@ -17,8 +15,8 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
   List<UserModel> _employees = [];
   List<AttendanceModel> _attendanceRecords = [];
   UserModel? _selectedEmployee;
-  DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
+  String? _successMessage;
   String? _errorMessage;
 
   @override
@@ -34,55 +32,142 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
       _employees = snapshot.docs.map((doc) {
         final data = doc.data();
         return UserModel.fromJson({...data, 'userId': doc.id});
-      }).toList();
+      }).where((user) => user.role.toLowerCase() != 'superadmin').toList();
+      setState(() => _isLoading = false);
     } catch (e) {
-      setState(() => _errorMessage = 'Failed to load employees: $e');
+      setState(() {
+        _errorMessage = 'Failed to load employees: $e';
+        _isLoading = false;
+      });
     }
-    setState(() => _isLoading = false);
   }
 
-  Future<void> _loadAttendanceForDate() async {
+  Future<void> _loadAttendanceRecords() async {
     if (_selectedEmployee == null) return;
     
     setState(() => _isLoading = true);
     try {
-      final startOfDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-      
-      final snapshot = await FirebaseFirestore.instance
+      final query = await FirebaseFirestore.instance
           .collection('attendance')
           .where('userId', isEqualTo: _selectedEmployee!.userId)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-          .where('date', isLessThan: Timestamp.fromDate(endOfDay))
+          .orderBy('date', descending: true)
+          .limit(30) // Last 30 records
           .get();
-      
-      _attendanceRecords = snapshot.docs.map((doc) {
+
+      _attendanceRecords = query.docs.map((doc) {
         final data = doc.data();
         return AttendanceModel.fromJson({...data, 'attendanceId': doc.id});
       }).toList();
       
-      // Remove duplicates - keep only the most recent record if multiple exist
-      if (_attendanceRecords.length > 1) {
-        _attendanceRecords.sort((a, b) => b.date.compareTo(a.date));
-        final mainRecord = _attendanceRecords.first;
-        
-        // Delete duplicate records from Firebase
-        for (int i = 1; i < _attendanceRecords.length; i++) {
-          await FirebaseFirestore.instance
-              .collection('attendance')
-              .doc(_attendanceRecords[i].attendanceId)
-              .delete();
-        }
-        
-        _attendanceRecords = [mainRecord];
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Removed duplicate records')),
-        );
-      }
-    } catch (e) {
-      setState(() => _errorMessage = 'Failed to load attendance: $e');
-    } finally {
       setState(() => _isLoading = false);
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load attendance records: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _editAttendanceRecord(AttendanceModel record) async {
+    DateTime? checkInTime = record.checkInTime;
+    DateTime? checkOutTime = record.checkOutTime;
+    String status = record.status;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _EditAttendanceDialog(
+        record: record,
+        initialCheckIn: checkInTime,
+        initialCheckOut: checkOutTime,
+        initialStatus: status,
+      ),
+    );
+
+    if (result != null) {
+      await _updateAttendanceRecord(record.attendanceId, result);
+    }
+  }
+
+  Future<void> _updateAttendanceRecord(String attendanceId, Map<String, dynamic> updates) async {
+    try {
+      setState(() => _isLoading = true);
+      
+      // Calculate total minutes if both times are provided
+      if (updates['checkInTime'] != null && updates['checkOutTime'] != null) {
+        final checkIn = updates['checkInTime'] as DateTime;
+        final checkOut = updates['checkOutTime'] as DateTime;
+        updates['totalMinutes'] = checkOut.difference(checkIn).inMinutes;
+      }
+      
+      await FirebaseFirestore.instance
+          .collection('attendance')
+          .doc(attendanceId)
+          .update(updates);
+          
+      setState(() {
+        _successMessage = 'Attendance record updated successfully';
+        _isLoading = false;
+      });
+      
+      // Reload records to show changes
+      await _loadAttendanceRecords();
+      
+      // Clear success message after 3 seconds
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _successMessage = null);
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to update record: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _deleteAttendanceRecord(String attendanceId, String date) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Attendance Record'),
+        content: Text('Are you sure you want to delete the attendance record for $date?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        setState(() => _isLoading = true);
+        await FirebaseFirestore.instance
+            .collection('attendance')
+            .doc(attendanceId)
+            .delete();
+            
+        setState(() {
+          _successMessage = 'Attendance record deleted successfully';
+          _isLoading = false;
+        });
+        
+        await _loadAttendanceRecords();
+        
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _successMessage = null);
+        });
+      } catch (e) {
+        setState(() {
+          _errorMessage = 'Failed to delete record: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -90,138 +175,109 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Attendance Time Management'),
+        title: const Text('Time Management'),
         backgroundColor: Colors.blue[700],
-        foregroundColor: Colors.white,
       ),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator())
-          : _buildContent(),
-    );
-  }
-
-  Widget _buildContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
         children: [
-          _buildEmployeeSelector(),
-          const SizedBox(height: 16),
-          _buildDateSelector(),
-          const SizedBox(height: 16),
-          if (_selectedEmployee != null) _buildAttendanceRecords(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmployeeSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Select Employee', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<UserModel>(
-              value: _selectedEmployee,
-              decoration: const InputDecoration(
-                labelText: 'Employee',
-                border: OutlineInputBorder(),
+          // Success/Error messages
+          if (_successMessage != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                border: Border.all(color: Colors.green),
+                borderRadius: BorderRadius.circular(8),
               ),
-              hint: const Text('Select Employee'),
+              child: Text(_successMessage!, style: const TextStyle(color: Colors.green)),
+            ),
+          if (_errorMessage != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                border: Border.all(color: Colors.red),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+            ),
+          
+          // Employee Selection
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: DropdownButtonFormField<UserModel>(
+              initialValue: _selectedEmployee,
+              decoration: const InputDecoration(
+                labelText: 'Select Employee',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
               items: _employees.map((employee) => DropdownMenuItem(
                 value: employee,
                 child: Text('${employee.name} (${employee.position})'),
               )).toList(),
               onChanged: (employee) {
-                setState(() => _selectedEmployee = employee);
-                _loadAttendanceForDate();
+                setState(() {
+                  _selectedEmployee = employee;
+                  _attendanceRecords.clear();
+                  _errorMessage = null;
+                  _successMessage = null;
+                });
+                if (employee != null) {
+                  _loadAttendanceRecords();
+                }
               },
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Select Date', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            ListTile(
-              title: Text(DateFormat('EEEE, MMMM dd, yyyy').format(_selectedDate)),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: _selectDate,
-              tileColor: Colors.grey[100],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAttendanceRecords() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Attendance Records', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ElevatedButton.icon(
-                  onPressed: _createNewAttendanceRecord,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Record'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_attendanceRecords.isEmpty)
-              _buildNoRecordsMessage()
-            else
-              ..._attendanceRecords.map((record) => _buildAttendanceCard(record)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoRecordsMessage() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        children: [
-          Icon(Icons.info_outline, size: 48, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            'No attendance records found for this date',
-            style: TextStyle(color: Colors.grey[600], fontSize: 16),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _createNewAttendanceRecord,
-            icon: const Icon(Icons.add),
-            label: const Text('Create New Record'),
-          ),
+
+          // Loading indicator
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(),
+            ),
+
+          // Attendance Records List
+          if (_selectedEmployee != null && !_isLoading)
+            Expanded(
+              child: _attendanceRecords.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No attendance records found',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _attendanceRecords.length,
+                      itemBuilder: (context, index) {
+                        final record = _attendanceRecords[index];
+                        return _buildAttendanceCard(record);
+                      },
+                    ),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildAttendanceCard(AttendanceModel record) {
+    final dateStr = DateFormat('EEEE, MMM dd, yyyy').format(record.date);
+    final checkInStr = record.checkInTime != null 
+        ? DateFormat('HH:mm').format(record.checkInTime!) 
+        : 'Not recorded';
+    final checkOutStr = record.checkOutTime != null 
+        ? DateFormat('HH:mm').format(record.checkOutTime!) 
+        : 'Not recorded';
+    
+    final workingHours = record.totalMinutes > 0 
+        ? '${(record.totalMinutes / 60).toStringAsFixed(1)}h' 
+        : '0h';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -232,182 +288,120 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Status: ${record.status.toUpperCase()}', 
-                     style: const TextStyle(fontWeight: FontWeight.bold)),
-                PopupMenuButton<String>(
-                  onSelected: (value) => _handleRecordAction(value, record),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'edit', child: Row(
-                      children: [Icon(Icons.edit), SizedBox(width: 8), Text('Edit Times')],
-                    )),
-                    const PopupMenuItem(value: 'delete', child: Row(
-                      children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Delete')],
-                    )),
-                  ],
+                Text(
+                  dateStr,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                _buildStatusChip(record.status),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTimeInfo('Check-in', checkInStr, Icons.login),
+                ),
+                Expanded(
+                  child: _buildTimeInfo('Check-out', checkOutStr, Icons.logout),
+                ),
+                Expanded(
+                  child: _buildTimeInfo('Hours', workingHours, Icons.access_time),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            _buildTimeInfo('Check-in:', record.checkInTime),
-            _buildTimeInfo('Check-out:', record.checkOutTime),
-            if (record.notes?.isNotEmpty == true) ...[
-              const SizedBox(height: 8),
-              Text('Notes: ${record.notes}', style: const TextStyle(fontStyle: FontStyle.italic)),
-            ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () => _editAttendanceRecord(record),
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Edit'),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => _deleteAttendanceRecord(record.attendanceId, dateStr),
+                  icon: const Icon(Icons.delete, size: 16, color: Colors.red),
+                  label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTimeInfo(String label, DateTime? time) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(width: 80, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500))),
-          Text(time != null ? DateFormat('HH:mm:ss').format(time) : 'Not recorded'),
-        ],
+  Widget _buildTimeInfo(String label, String time, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: Colors.grey[600]),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        Text(
+          time,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusChip(String status) {
+    Color color;
+    switch (status.toLowerCase()) {
+      case 'present':
+        color = Colors.green;
+        break;
+      case 'late':
+        color = Colors.orange;
+        break;
+      case 'absent':
+        color = Colors.red;
+        break;
+      default:
+        color = Colors.grey;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
-  }
-
-  Future<void> _selectDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-    );
-    if (date != null) {
-      setState(() => _selectedDate = date);
-      _loadAttendanceForDate();
-    }
-  }
-
-  void _handleRecordAction(String action, AttendanceModel record) {
-    if (action == 'edit') {
-      _showEditTimeDialog(record);
-    } else if (action == 'delete') {
-      _showDeleteConfirmDialog(record);
-    }
-  }
-
-  void _showEditTimeDialog(AttendanceModel record) {
-    showDialog(
-      context: context,
-      builder: (context) => _EditTimeDialog(
-        record: record,
-        onSave: (checkIn, checkOut, status, notes) => _updateAttendanceRecord(record, checkIn, checkOut, status, notes),
-      ),
-    );
-  }
-
-  void _showDeleteConfirmDialog(AttendanceModel record) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Attendance Record'),
-        content: const Text('Are you sure you want to delete this attendance record? This action cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteAttendanceRecord(record);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _createNewAttendanceRecord() {
-    if (_selectedEmployee == null) return;
-    
-    showDialog(
-      context: context,
-      builder: (context) => _EditTimeDialog(
-        record: null,
-        selectedEmployee: _selectedEmployee!,
-        selectedDate: _selectedDate,
-        onSave: (checkIn, checkOut, status, notes) => _createAttendanceRecord(checkIn, checkOut, status, notes),
-      ),
-    );
-  }
-
-  Future<void> _updateAttendanceRecord(AttendanceModel record, DateTime? checkIn, DateTime? checkOut, String status, String notes) async {
-    try {
-      final updateData = <String, dynamic>{'status': status, 'notes': notes};
-      if (checkIn != null) updateData['checkInTime'] = Timestamp.fromDate(checkIn);
-      if (checkOut != null) updateData['checkOutTime'] = Timestamp.fromDate(checkOut);
-      if (checkIn != null && checkOut != null) {
-        updateData['totalMinutes'] = checkOut.difference(checkIn).inMinutes;
-      }
-      
-      await FirebaseFirestore.instance.collection('attendance').doc(record.attendanceId).update(updateData);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance updated successfully')));
-      _loadAttendanceForDate();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
-    }
-  }
-
-  Future<void> _createAttendanceRecord(DateTime? checkIn, DateTime? checkOut, String status, String notes) async {
-    if (_selectedEmployee == null) return;
-    
-    try {
-      final attendanceId = FirebaseFirestore.instance.collection('attendance').doc().id;
-      final data = {
-        'attendanceId': attendanceId,
-        'userId': _selectedEmployee!.userId,
-        'date': Timestamp.fromDate(_selectedDate),
-        'status': status,
-        'notes': notes,
-        'checkInTime': checkIn != null ? Timestamp.fromDate(checkIn) : null,
-        'checkOutTime': checkOut != null ? Timestamp.fromDate(checkOut) : null,
-        'totalMinutes': (checkIn != null && checkOut != null) ? checkOut.difference(checkIn).inMinutes : 0,
-      };
-      
-      await FirebaseFirestore.instance.collection('attendance').doc(attendanceId).set(data);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record created successfully')));
-      _loadAttendanceForDate();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create record: $e')));
-    }
-  }
-
-  Future<void> _deleteAttendanceRecord(AttendanceModel record) async {
-    try {
-      await FirebaseFirestore.instance.collection('attendance').doc(record.attendanceId).delete();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record deleted')));
-      _loadAttendanceForDate();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
-    }
   }
 }
 
-class _EditTimeDialog extends StatefulWidget {
-  final AttendanceModel? record;
-  final UserModel? selectedEmployee;
-  final DateTime? selectedDate;
-  final Function(DateTime?, DateTime?, String, String) onSave;
+class _EditAttendanceDialog extends StatefulWidget {
+  final AttendanceModel record;
+  final DateTime? initialCheckIn;
+  final DateTime? initialCheckOut;
+  final String initialStatus;
 
-  const _EditTimeDialog({
-    required this.onSave,
-    this.record,
-    this.selectedEmployee,
-    this.selectedDate,
+  const _EditAttendanceDialog({
+    required this.record,
+    this.initialCheckIn,
+    this.initialCheckOut,
+    required this.initialStatus,
   });
 
   @override
-  State<_EditTimeDialog> createState() => _EditTimeDialogState();
+  State<_EditAttendanceDialog> createState() => _EditAttendanceDialogState();
 }
 
-class _EditTimeDialogState extends State<_EditTimeDialog> {
+class _EditAttendanceDialogState extends State<_EditAttendanceDialog> {
   DateTime? _checkInTime;
   DateTime? _checkOutTime;
   String _status = 'present';
@@ -416,87 +410,127 @@ class _EditTimeDialogState extends State<_EditTimeDialog> {
   @override
   void initState() {
     super.initState();
-    if (widget.record != null) {
-      _checkInTime = widget.record!.checkInTime;
-      _checkOutTime = widget.record!.checkOutTime;
-      _status = widget.record!.status;
-      _notesController.text = widget.record!.notes ?? '';
-    }
+    _checkInTime = widget.initialCheckIn;
+    _checkOutTime = widget.initialCheckOut;
+    _status = widget.initialStatus;
   }
 
   @override
   Widget build(BuildContext context) {
+    final dateStr = DateFormat('MMM dd, yyyy').format(widget.record.date);
+    
     return AlertDialog(
-      title: Text(widget.record != null ? 'Edit Attendance Times' : 'Create Attendance Record'),
-      content: SizedBox(
-        width: 400,
+      title: Text('Edit Attendance - $dateStr'),
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildTimeSelector('Check-in Time', _checkInTime, (time) => setState(() => _checkInTime = time)),
+            // Check-in time
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: const Text('Check-in Time'),
+              subtitle: Text(_checkInTime != null 
+                  ? DateFormat('HH:mm').format(_checkInTime!) 
+                  : 'Not set'),
+              trailing: IconButton(
+                icon: const Icon(Icons.access_time),
+                onPressed: () => _selectTime(true),
+              ),
+            ),
+            
+            // Check-out time
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Check-out Time'),
+              subtitle: Text(_checkOutTime != null 
+                  ? DateFormat('HH:mm').format(_checkOutTime!) 
+                  : 'Not set'),
+              trailing: IconButton(
+                icon: const Icon(Icons.access_time),
+                onPressed: () => _selectTime(false),
+              ),
+            ),
+            
             const SizedBox(height: 16),
-            _buildTimeSelector('Check-out Time', _checkOutTime, (time) => setState(() => _checkOutTime = time)),
-            const SizedBox(height: 16),
+            
+            // Status dropdown
             DropdownButtonFormField<String>(
               initialValue: _status,
-              decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-              items: ['present', 'late', 'absent'].map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase()))).toList(),
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                border: OutlineInputBorder(),
+              ),
+              items: ['present', 'late', 'absent'].map((s) => 
+                DropdownMenuItem(value: s, child: Text(s.toUpperCase()))
+              ).toList(),
               onChanged: (value) => setState(() => _status = value!),
             ),
+            
             const SizedBox(height: 16),
+            
+            // Notes field
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Notes (Admin changes)', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Admin Notes (optional)',
+                border: OutlineInputBorder(),
+                hintText: 'Reason for time adjustment...',
+              ),
               maxLines: 2,
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
-          onPressed: () {
-            widget.onSave(_checkInTime, _checkOutTime, _status, _notesController.text);
-            Navigator.pop(context);
-          },
-          child: const Text('Save'),
+          onPressed: _saveChanges,
+          child: const Text('Save Changes'),
         ),
       ],
     );
   }
 
-  Widget _buildTimeSelector(String label, DateTime? time, Function(DateTime?) onChanged) {
-    return ListTile(
-      title: Text(label),
-      subtitle: Text(time != null ? DateFormat('yyyy-MM-dd HH:mm:ss').format(time) : 'Not set'),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            onPressed: () => _selectDateTime(time, onChanged),
-            icon: const Icon(Icons.edit),
-          ),
-          if (time != null)
-            IconButton(
-              onPressed: () => onChanged(null),
-              icon: const Icon(Icons.clear),
-            ),
-        ],
-      ),
-      tileColor: Colors.grey[100],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  Future<void> _selectTime(bool isCheckIn) async {
+    final initialTime = isCheckIn ? _checkInTime : _checkOutTime;
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialTime ?? DateTime.now()),
     );
+
+    if (selectedTime != null) {
+      final selectedDateTime = DateTime(
+        widget.record.date.year,
+        widget.record.date.month,
+        widget.record.date.day,
+        selectedTime.hour,
+        selectedTime.minute,
+      );
+
+      setState(() {
+        if (isCheckIn) {
+          _checkInTime = selectedDateTime;
+        } else {
+          _checkOutTime = selectedDateTime;
+        }
+      });
+    }
   }
 
-  Future<void> _selectDateTime(DateTime? currentTime, Function(DateTime?) onChanged) async {
-    final date = widget.selectedDate ?? DateTime.now();
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(currentTime ?? DateTime.now()),
-    );
-    if (time != null) {
-      final newDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-      onChanged(newDateTime);
+  void _saveChanges() {
+    final updates = <String, dynamic>{
+      'status': _status,
+      'checkInTime': _checkInTime,
+      'checkOutTime': _checkOutTime,
+    };
+
+    if (_notesController.text.isNotEmpty) {
+      updates['notes'] = _notesController.text;
     }
+
+    Navigator.pop(context, updates);
   }
 }

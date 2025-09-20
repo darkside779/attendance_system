@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use, unused_import, avoid_print, unnecessary_brace_in_string_interps, use_build_context_synchronously, prefer_typing_uninitialized_variables
 
+import 'package:attendance_system/screens/admin/debug_location_screen.dart';
+import 'package:attendance_system/screens/admin/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -13,10 +15,8 @@ import '../auth/login_screen.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/system_lock_guard.dart';
 import 'employee_management_screen.dart';
-import 'settings_screen.dart';
-import 'debug_location_screen.dart';
-import 'incomplete_checkout_management_screen.dart';
 import 'attendance_time_management_screen.dart';
+import 'incomplete_checkout_management_screen.dart';
 import '../../providers/incomplete_checkout_provider.dart';
 import '../../models/attendance_model.dart';
 
@@ -895,20 +895,57 @@ class _AdminDashboardState extends State<AdminDashboard>
             return Text(timeText);
           },
         ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: statusColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            status.toUpperCase(),
-            style: TextStyle(
-              color: statusColor,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                status.toUpperCase(),
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
             ),
-          ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'edit') {
+                  _editAttendanceFromOverview(attendance);
+                } else if (value == 'delete') {
+                  _deleteAttendanceFromOverview(attendance, provider, employeeName);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 16, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text('Edit'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 16, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Delete'),
+                    ],
+                  ),
+                ),
+              ],
+              child: const Icon(Icons.more_vert, size: 16),
+            ),
+          ],
         ),
         onTap: () => _showAttendanceDetails(attendance),
       ),
@@ -2126,6 +2163,91 @@ class _AdminDashboardState extends State<AdminDashboard>
         builder: (context) => const IncompleteCheckoutManagementScreen(),
       ),
     );
+  }
+
+  // Edit attendance record from employee overview
+  void _editAttendanceFromOverview(AttendanceModel attendance) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const AttendanceTimeManagementScreen(),
+      ),
+    );
+  }
+
+  // Delete attendance record from employee overview
+  Future<void> _deleteAttendanceFromOverview(
+    AttendanceModel attendance, 
+    AdminAttendanceProvider provider, 
+    String employeeName
+  ) async {
+    final dateStr = DateFormat('MMM dd, yyyy').format(attendance.date);
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Attendance Record'),
+        content: Text(
+          'Are you sure you want to delete the attendance record for $employeeName on $dateStr?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        // Show loading
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+
+        // Delete from Firebase
+        await FirebaseFirestore.instance
+            .collection('attendance')
+            .doc(attendance.attendanceId)
+            .delete();
+
+        // Close loading dialog
+        Navigator.pop(context);
+
+        // Refresh the provider data
+        await provider.loadTodayAttendance();
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Attendance record for $employeeName deleted successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } catch (e) {
+        // Close loading dialog if open
+        Navigator.pop(context);
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete attendance record: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
 
