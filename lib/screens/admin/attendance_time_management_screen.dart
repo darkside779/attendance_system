@@ -1,11 +1,10 @@
 // ignore_for_file: avoid_print, use_build_context_synchronously
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../models/attendance_model.dart';
+import 'package:intl/intl.dart';
+
 import '../../models/user_model.dart';
-import '../../providers/attendance_provider.dart';
+import '../../models/attendance_model.dart';
 
 class AttendanceTimeManagementScreen extends StatefulWidget {
   const AttendanceTimeManagementScreen({super.key});
@@ -42,7 +41,7 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
     setState(() => _isLoading = false);
   }
 
-  Future<void> _loadAttendanceForEmployee() async {
+  Future<void> _loadAttendanceForDate() async {
     if (_selectedEmployee == null) return;
     
     setState(() => _isLoading = true);
@@ -57,11 +56,34 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
           .where('date', isLessThan: Timestamp.fromDate(endOfDay))
           .get();
       
-      _attendanceRecords = snapshot.docs.map((doc) => AttendanceModel.fromDocument(doc)).toList();
+      _attendanceRecords = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return AttendanceModel.fromJson({...data, 'attendanceId': doc.id});
+      }).toList();
+      
+      // Remove duplicates - keep only the most recent record if multiple exist
+      if (_attendanceRecords.length > 1) {
+        _attendanceRecords.sort((a, b) => b.date.compareTo(a.date));
+        final mainRecord = _attendanceRecords.first;
+        
+        // Delete duplicate records from Firebase
+        for (int i = 1; i < _attendanceRecords.length; i++) {
+          await FirebaseFirestore.instance
+              .collection('attendance')
+              .doc(_attendanceRecords[i].attendanceId)
+              .delete();
+        }
+        
+        _attendanceRecords = [mainRecord];
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed duplicate records')),
+        );
+      }
     } catch (e) {
       setState(() => _errorMessage = 'Failed to load attendance: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
-    setState(() => _isLoading = false);
   }
 
   @override
@@ -109,13 +131,14 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
                 labelText: 'Employee',
                 border: OutlineInputBorder(),
               ),
+              hint: const Text('Select Employee'),
               items: _employees.map((employee) => DropdownMenuItem(
                 value: employee,
                 child: Text('${employee.name} (${employee.position})'),
               )).toList(),
               onChanged: (employee) {
                 setState(() => _selectedEmployee = employee);
-                _loadAttendanceForEmployee();
+                _loadAttendanceForDate();
               },
             ),
           ],
@@ -258,7 +281,7 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
     );
     if (date != null) {
       setState(() => _selectedDate = date);
-      _loadAttendanceForEmployee();
+      _loadAttendanceForDate();
     }
   }
 
@@ -326,7 +349,7 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
       
       await FirebaseFirestore.instance.collection('attendance').doc(record.attendanceId).update(updateData);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance updated successfully')));
-      _loadAttendanceForEmployee();
+      _loadAttendanceForDate();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
     }
@@ -350,7 +373,7 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
       
       await FirebaseFirestore.instance.collection('attendance').doc(attendanceId).set(data);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record created successfully')));
-      _loadAttendanceForEmployee();
+      _loadAttendanceForDate();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create record: $e')));
     }
@@ -360,7 +383,7 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
     try {
       await FirebaseFirestore.instance.collection('attendance').doc(record.attendanceId).delete();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance record deleted')));
-      _loadAttendanceForEmployee();
+      _loadAttendanceForDate();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
     }
@@ -415,7 +438,7 @@ class _EditTimeDialogState extends State<_EditTimeDialog> {
             _buildTimeSelector('Check-out Time', _checkOutTime, (time) => setState(() => _checkOutTime = time)),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _status,
+              initialValue: _status,
               decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
               items: ['present', 'late', 'absent'].map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase()))).toList(),
               onChanged: (value) => setState(() => _status = value!),
