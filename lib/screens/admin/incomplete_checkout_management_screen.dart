@@ -373,6 +373,8 @@ class _IncompleteCheckoutManagementScreenState extends State<IncompleteCheckoutM
               ),
               ElevatedButton(
                 onPressed: () async {
+                  // Store the parent context before closing dialog
+                  final parentContext = Navigator.of(context).context;
                   Navigator.of(context).pop();
                   final success = await provider.autoCompleteCheckout(
                     attendance: checkout,
@@ -380,8 +382,9 @@ class _IncompleteCheckoutManagementScreenState extends State<IncompleteCheckoutM
                     reason: 'Auto-completed by admin',
                   );
                   
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                  // Use parent context and check if it's still mounted
+                  if (parentContext.mounted) {
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
                       SnackBar(
                         content: Text(success 
                             ? 'Checkout completed successfully!' 
@@ -482,6 +485,8 @@ class _IncompleteCheckoutManagementScreenState extends State<IncompleteCheckoutM
                   selectedTime.minute,
                 );
                 
+                // Store the parent context before closing dialog
+                final parentContext = Navigator.of(context).context;
                 Navigator.of(context).pop();
                 
                 final success = await provider.manualCompleteCheckout(
@@ -490,8 +495,9 @@ class _IncompleteCheckoutManagementScreenState extends State<IncompleteCheckoutM
                   reason: reasonController.text,
                 );
                 
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                // Use parent context and check if it's still mounted
+                if (parentContext.mounted) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
                     SnackBar(
                       content: Text(success 
                           ? 'Checkout completed successfully!' 

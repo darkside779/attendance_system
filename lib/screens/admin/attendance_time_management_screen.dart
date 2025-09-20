@@ -1,7 +1,13 @@
+// ignore_for_file: avoid_print, unnecessary_brace_in_string_interps
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../models/attendance_model.dart';
+import '../../models/shift_model.dart';
+import '../../providers/shift_provider.dart';
+import '../../core/constants/app_colors.dart';
 import 'package:intl/intl.dart';
 
 class AttendanceTimeManagementScreen extends StatefulWidget {
@@ -23,6 +29,10 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
   void initState() {
     super.initState();
     _loadEmployees();
+    // Load shifts for status calculation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ShiftProvider>(context, listen: false).loadShifts();
+    });
   }
 
   Future<void> _loadEmployees() async {
@@ -32,7 +42,10 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
       _employees = snapshot.docs.map((doc) {
         final data = doc.data();
         return UserModel.fromJson({...data, 'userId': doc.id});
-      }).where((user) => user.role.toLowerCase() != 'superadmin').toList();
+      }).where((user) => 
+        user.role.toLowerCase() != 'superadmin' && 
+        user.role.toLowerCase() != 'admin'
+      ).toList();
       setState(() => _isLoading = false);
     } catch (e) {
       setState(() {
@@ -47,10 +60,10 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
     
     setState(() => _isLoading = true);
     try {
+      // Temporary fix: Remove orderBy to avoid index requirement
       final query = await FirebaseFirestore.instance
           .collection('attendance')
           .where('userId', isEqualTo: _selectedEmployee!.userId)
-          .orderBy('date', descending: true)
           .limit(30) // Last 30 records
           .get();
 
@@ -58,6 +71,9 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
         final data = doc.data();
         return AttendanceModel.fromJson({...data, 'attendanceId': doc.id});
       }).toList();
+      
+      // Sort by date descending (client-side sorting as workaround)
+      _attendanceRecords.sort((a, b) => b.date.compareTo(a.date));
       
       setState(() => _isLoading = false);
     } catch (e) {
@@ -96,7 +112,39 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
       if (updates['checkInTime'] != null && updates['checkOutTime'] != null) {
         final checkIn = updates['checkInTime'] as DateTime;
         final checkOut = updates['checkOutTime'] as DateTime;
-        updates['totalMinutes'] = checkOut.difference(checkIn).inMinutes;
+        
+        // Handle cross-midnight scenarios
+        int totalMinutes;
+        
+        // Check if checkout time suggests next day (before 6 AM)
+        final checkOutHour = checkOut.hour;
+        final checkInHour = checkIn.hour;
+        
+        if ((checkOutHour >= 0 && checkOutHour < 6) && checkInHour > 12) {
+          // Checkout is early morning (0-6 AM) and checkin is afternoon/evening
+          // This suggests cross-midnight scenario
+          final nextDayCheckOut = DateTime(
+            checkOut.year,
+            checkOut.month,
+            checkOut.day + 1,
+            checkOut.hour,
+            checkOut.minute,
+            checkOut.second,
+          );
+          totalMinutes = nextDayCheckOut.difference(checkIn).inMinutes;
+        } else {
+          totalMinutes = checkOut.difference(checkIn).inMinutes;
+        }
+        
+        // Ensure totalMinutes is not negative and reasonable (max 24 hours)
+        if (totalMinutes < 0 || totalMinutes > 1440) {
+          totalMinutes = 0;
+        }
+        
+        updates['totalMinutes'] = totalMinutes;
+      } else {
+        // If either time is missing, set totalMinutes to 0
+        updates['totalMinutes'] = 0;
       }
       
       await FirebaseFirestore.instance
@@ -171,84 +219,212 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
     }
   }
 
+  // Get employee's shift for a specific date
+  ShiftModel? _getEmployeeShift(AttendanceModel attendance, ShiftProvider shiftProvider) {
+    if (_selectedEmployee?.assignedShiftId == null || _selectedEmployee!.assignedShiftId!.isEmpty) {
+      return null;
+    }
+    
+    return shiftProvider.shifts.firstWhere(
+      (shift) => shift.shiftId == _selectedEmployee!.assignedShiftId,
+      orElse: () => ShiftModel(
+        shiftId: '',
+        shiftName: 'Default',
+        startTime: '09:00',
+        endTime: '17:00',
+        workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+        isActive: true,
+        gracePeriodMinutes: 15,
+      ),
+    );
+  }
+
+  // Calculate real-time status based on shift
+  String _calculateShiftBasedStatus(AttendanceModel attendance, ShiftProvider shiftProvider) {
+    // If no check-in, it's absent
+    if (attendance.checkInTime == null) {
+      print('  ❌ No check-in time - returning absent');
+      return 'absent';
+    }
+    
+    // Get employee's shift
+    final shift = _getEmployeeShift(attendance, shiftProvider);
+    if (shift == null) {
+      print('  ⚠️  No shift found - using stored status: ${attendance.status}');
+      return attendance.status; // Fallback to stored status if no shift
+    }
+    
+    print('  ✅ Shift found: ${shift.shiftName} (${shift.startTime} - ${shift.endTime}, Grace: ${shift.gracePeriodMinutes}min)');
+    
+    // Parse shift start time
+    final shiftTimeParts = shift.startTime.split(':');
+    final shiftHour = int.parse(shiftTimeParts[0]);
+    final shiftMinute = int.parse(shiftTimeParts[1]);
+    
+    // Create shift start datetime for the attendance date
+    final shiftStart = DateTime(
+      attendance.date.year,
+      attendance.date.month,
+      attendance.date.day,
+      shiftHour,
+      shiftMinute,
+    );
+    
+    // Calculate grace period end time
+    final gracePeriodEnd = shiftStart.add(Duration(minutes: shift.gracePeriodMinutes));
+    
+    // Compare check-in time with grace period
+    print('  📅 Shift Start: $shiftStart');
+    print('  ⏰ Grace Period End: $gracePeriodEnd');
+    print('  🕐 Check-in Time: ${attendance.checkInTime}');
+    
+    // Define acceptable check-in window (1 hour before to 4 hours after shift start)
+    final earlyWindow = shiftStart.subtract(const Duration(hours: 1));
+    final lateWindow = shiftStart.add(const Duration(hours: 4));
+    
+    if (attendance.checkInTime!.isBefore(earlyWindow) || attendance.checkInTime!.isAfter(lateWindow)) {
+      // Check-in is way outside shift window - mark as late (worked wrong hours)
+      final hoursDifference = attendance.checkInTime!.difference(shiftStart).inHours.abs();
+      print('  ⚠️  LATE: Check-in outside shift window (${hoursDifference}h from shift start)');
+      return 'late';
+    } else if (attendance.checkInTime!.isBefore(gracePeriodEnd) || attendance.checkInTime!.isAtSameMomentAs(gracePeriodEnd)) {
+      print('  ✅ PRESENT: Check-in within grace period');
+      return 'present';
+    } else {
+      final lateMinutes = attendance.checkInTime!.difference(gracePeriodEnd).inMinutes;
+      print('  ⚠️  LATE: Check-in ${lateMinutes} minutes after grace period');
+      return 'late';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return Consumer<ShiftProvider>(
+      builder: (context, shiftProvider, child) {
+        return Scaffold(
+      backgroundColor: AppColors.lightGrey,
       appBar: AppBar(
-        title: const Text('Time Management'),
-        backgroundColor: Colors.blue[700],
+        title: const Text(
+          'Time Management',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
       ),
       body: Column(
         children: [
+          // Controls Section
+          _buildControlsSection(),
+          
           // Success/Error messages
           if (_successMessage != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.all(16),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.green[50],
-                border: Border.all(color: Colors.green),
-                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade300),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(_successMessage!, style: const TextStyle(color: Colors.green)),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _successMessage!,
+                      style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
             ),
           if (_errorMessage != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.all(16),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.red[50],
-                border: Border.all(color: Colors.red),
-                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade300),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-            ),
-          
-          // Employee Selection
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: DropdownButtonFormField<UserModel>(
-              initialValue: _selectedEmployee,
-              decoration: const InputDecoration(
-                labelText: 'Select Employee',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
+              child: Row(
+                children: [
+                  Icon(Icons.error, color: Colors.red, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
               ),
-              items: _employees.map((employee) => DropdownMenuItem(
-                value: employee,
-                child: Text('${employee.name} (${employee.position})'),
-              )).toList(),
-              onChanged: (employee) {
-                setState(() {
-                  _selectedEmployee = employee;
-                  _attendanceRecords.clear();
-                  _errorMessage = null;
-                  _successMessage = null;
-                });
-                if (employee != null) {
-                  _loadAttendanceRecords();
-                }
-              },
             ),
-          ),
 
           // Loading indicator
           if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                      strokeWidth: 3,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Loading attendance records...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
 
           // Attendance Records List
           if (_selectedEmployee != null && !_isLoading)
             Expanded(
               child: _attendanceRecords.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No attendance records found',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.assignment_outlined,
+                            size: 80,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'No attendance records found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Attendance records will appear here',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : ListView.builder(
@@ -260,6 +436,218 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
                       },
                     ),
             ),
+          
+          // No employee selected
+          if (_selectedEmployee == null && !_isLoading)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.schedule_outlined,
+                      size: 80,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Select an employee to manage time',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Choose from the dropdown above to get started',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+        );
+      },
+    );
+  }
+
+  Widget _buildControlsSection() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Employee Selection',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Employee Selection
+          DropdownButtonFormField<UserModel>(
+            initialValue: _selectedEmployee,
+            decoration: InputDecoration(
+              labelText: 'Select Employee',
+              labelStyle: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w500),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey[300]!, width: 1.5),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: AppColors.primary, width: 2.5),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              prefixIcon: Container(
+                margin: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.person_outline, color: AppColors.primary, size: 20),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            ),
+            selectedItemBuilder: (context) {
+              return _employees.map((employee) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                        child: Text(
+                          employee.name.isNotEmpty ? employee.name[0].toUpperCase() : 'E',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          '${employee.name} • ${employee.position}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList();
+            },
+            items: _employees.map((employee) => DropdownMenuItem(
+              value: employee,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                      child: Text(
+                        employee.name.isNotEmpty ? employee.name[0].toUpperCase() : 'E',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            employee.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            employee.position,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )).toList(),
+            onChanged: (employee) {
+              setState(() {
+                _selectedEmployee = employee;
+                _attendanceRecords.clear();
+                _errorMessage = null;
+                _successMessage = null;
+              });
+              if (employee != null) {
+                _loadAttendanceRecords();
+              }
+            },
+            hint: Container(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.search, color: Colors.grey[400], size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Choose an employee to manage their time',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.keyboard_arrow_down, color: AppColors.primary),
+            iconSize: 24,
+          ),
         ],
       ),
     );
@@ -268,61 +656,100 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
   Widget _buildAttendanceCard(AttendanceModel record) {
     final dateStr = DateFormat('EEEE, MMM dd, yyyy').format(record.date);
     final checkInStr = record.checkInTime != null 
-        ? DateFormat('HH:mm').format(record.checkInTime!) 
+        ? DateFormat('h:mm a').format(record.checkInTime!) 
         : 'Not recorded';
     final checkOutStr = record.checkOutTime != null 
-        ? DateFormat('HH:mm').format(record.checkOutTime!) 
+        ? DateFormat('h:mm a').format(record.checkOutTime!) 
         : 'Not recorded';
     
     final workingHours = record.totalMinutes > 0 
         ? '${(record.totalMinutes / 60).toStringAsFixed(1)}h' 
         : '0h';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header with date and status
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  dateStr,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    dateStr,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
                 ),
-                _buildStatusChip(record.status),
+                _buildStatusChip(record),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+            
+            // Time information grid
             Row(
               children: [
                 Expanded(
-                  child: _buildTimeInfo('Check-in', checkInStr, Icons.login),
+                  child: _buildTimeInfo('Check-in', checkInStr, Icons.login_outlined),
                 ),
                 Expanded(
-                  child: _buildTimeInfo('Check-out', checkOutStr, Icons.logout),
+                  child: _buildTimeInfo('Check-out', checkOutStr, Icons.logout_outlined),
                 ),
                 Expanded(
-                  child: _buildTimeInfo('Hours', workingHours, Icons.access_time),
+                  child: _buildTimeInfo('Hours', workingHours, Icons.access_time_outlined),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+            
+            // Action buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton.icon(
+                ElevatedButton.icon(
                   onPressed: () => _editAttendanceRecord(record),
-                  icon: const Icon(Icons.edit, size: 16),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Edit'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                TextButton.icon(
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
                   onPressed: () => _deleteAttendanceRecord(record.attendanceId, dateStr),
-                  icon: const Icon(Icons.delete, size: 16, color: Colors.red),
-                  label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('Delete'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -333,52 +760,93 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
   }
 
   Widget _buildTimeInfo(String label, String time, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, size: 20, color: Colors.grey[600]),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-        Text(
-          time,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 24, color: AppColors.primary),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            time,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStatusChip(String status) {
+  Widget _buildStatusChip(AttendanceModel record) {
+    // Calculate real-time status based on shift
+    final shiftProvider = Provider.of<ShiftProvider>(context, listen: false);
+    final realTimeStatus = _calculateShiftBasedStatus(record, shiftProvider);
+    
+    // Debug: Print shift calculation info
+    print('🔍 Status Debug for ${record.date}:');
+    print('  - Employee: ${_selectedEmployee?.name}');
+    print('  - Assigned Shift ID: ${_selectedEmployee?.assignedShiftId}');
+    print('  - Check-in: ${record.checkInTime}');
+    print('  - Calculated Status: $realTimeStatus');
+    print('  - Stored Status: ${record.status}');
+    
     Color color;
-    switch (status.toLowerCase()) {
+    IconData icon;
+    switch (realTimeStatus.toLowerCase()) {
       case 'present':
         color = Colors.green;
+        icon = Icons.check_circle;
         break;
       case 'late':
         color = Colors.orange;
+        icon = Icons.access_time;
         break;
       case 'absent':
         color = Colors.red;
+        icon = Icons.cancel;
         break;
       default:
         color = Colors.grey;
+        icon = Icons.help;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        status.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            realTimeStatus.toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }

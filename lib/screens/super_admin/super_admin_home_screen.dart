@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_colors.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/system_lock_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../utils/initialize_system_settings.dart';
 import '../../services/system_lock_service.dart';
+import '../../core/constants/app_colors.dart';
 
 class SuperAdminHomeScreen extends StatefulWidget {
   const SuperAdminHomeScreen({super.key});
@@ -20,6 +21,8 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<SystemLockProvider>(context, listen: false).initialize();
+      // Initialize system settings after authentication
+      SystemSettingsInitializer.initializeAfterAuth();
     });
   }
 
@@ -54,19 +57,19 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
                 children: [
                   // Welcome Card
                   _buildWelcomeCard(authProvider),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // System Status Card
                   _buildSystemStatusCard(systemLockProvider),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // System Control Card
                   _buildSystemControlCard(systemLockProvider, authProvider),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Lock Information Card
                   if (systemLockProvider.lockInfo != null)
                     _buildLockInfoCard(systemLockProvider.lockInfo!),
@@ -158,8 +161,8 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: provider.isSystemLocked 
-                      ? AppColors.error 
+                  color: provider.isSystemLocked
+                      ? AppColors.error
                       : AppColors.success,
                   shape: BoxShape.circle,
                 ),
@@ -170,19 +173,19 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      provider.isSystemLocked 
-                          ? 'SYSTEM LOCKED' 
+                      provider.isSystemLocked
+                          ? 'SYSTEM LOCKED'
                           : 'SYSTEM ACTIVE',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: provider.isSystemLocked 
-                            ? AppColors.error 
+                        color: provider.isSystemLocked
+                            ? AppColors.error
                             : AppColors.success,
                       ),
                     ),
                     Text(
-                      provider.isSystemLocked 
+                      provider.isSystemLocked
                           ? 'All users are blocked from accessing the system'
                           : 'System is running normally',
                       style: const TextStyle(
@@ -201,7 +204,7 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
   }
 
   Widget _buildSystemControlCard(
-    SystemLockProvider provider, 
+    SystemLockProvider provider,
     AuthProvider authProvider,
   ) {
     return Container(
@@ -229,13 +232,11 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          
           if (!provider.isSystemLocked) ...[
             _buildLockSystemSection(provider, authProvider),
           ] else ...[
             _buildUnlockSystemSection(provider, authProvider),
           ],
-          
           if (provider.errorMessage != null) ...[
             const SizedBox(height: 16),
             Container(
@@ -243,7 +244,8 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
               decoration: BoxDecoration(
                 color: AppColors.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                border:
+                    Border.all(color: AppColors.error.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -270,7 +272,7 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
   }
 
   Widget _buildLockSystemSection(
-    SystemLockProvider provider, 
+    SystemLockProvider provider,
     AuthProvider authProvider,
   ) {
     return Column(
@@ -288,10 +290,10 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: provider.isLoading 
-                ? null 
+            onPressed: provider.isLoading
+                ? null
                 : () => _confirmLockSystem(provider, authProvider),
-            icon: provider.isLoading 
+            icon: provider.isLoading
                 ? const SizedBox(
                     width: 20,
                     height: 20,
@@ -311,16 +313,16 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
   }
 
   Widget _buildUnlockSystemSection(
-    SystemLockProvider provider, 
+    SystemLockProvider provider,
     AuthProvider authProvider,
   ) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: provider.isLoading 
-            ? null 
+        onPressed: provider.isLoading
+            ? null
             : () => _confirmUnlockSystem(provider, authProvider),
-        icon: provider.isLoading 
+        icon: provider.isLoading
             ? const SizedBox(
                 width: 20,
                 height: 20,
@@ -363,17 +365,14 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          
           if (lockInfo.isLocked && lockInfo.lockReason != null) ...[
             _buildInfoRow('Reason', lockInfo.lockReason!),
             const SizedBox(height: 8),
           ],
-          
           if (lockInfo.lockedBy != null) ...[
             _buildInfoRow('Locked By', lockInfo.lockedBy!),
             const SizedBox(height: 8),
           ],
-          
           if (lockInfo.lockedAt != null) ...[
             _buildInfoRow('Locked At', _formatDateTime(lockInfo.lockedAt!)),
           ],
@@ -409,7 +408,7 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
   }
 
   Future<void> _confirmLockSystem(
-    SystemLockProvider provider, 
+    SystemLockProvider provider,
     AuthProvider authProvider,
   ) async {
     final confirmed = await showDialog<bool>(
@@ -443,8 +442,8 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
     if (confirmed == true && authProvider.currentUser != null) {
       final success = await provider.lockSystem(
         superAdminId: authProvider.currentUser!.userId,
-        reason: _reasonController.text.trim().isEmpty 
-            ? null 
+        reason: _reasonController.text.trim().isEmpty
+            ? null
             : _reasonController.text.trim(),
       );
 
@@ -456,7 +455,7 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
   }
 
   Future<void> _confirmUnlockSystem(
-    SystemLockProvider provider, 
+    SystemLockProvider provider,
     AuthProvider authProvider,
   ) async {
     final confirmed = await showDialog<bool>(
@@ -533,7 +532,7 @@ class _SuperAdminHomeScreenState extends State<SuperAdminHomeScreen> {
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} '
-           '${dateTime.hour.toString().padLeft(2, '0')}:'
-           '${dateTime.minute.toString().padLeft(2, '0')}';
+        '${dateTime.hour.toString().padLeft(2, '0')}:'
+        '${dateTime.minute.toString().padLeft(2, '0')}';
   }
 }

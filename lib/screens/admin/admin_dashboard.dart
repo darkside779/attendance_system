@@ -17,6 +17,8 @@ import '../../widgets/system_lock_guard.dart';
 import 'employee_management_screen.dart';
 import 'attendance_time_management_screen.dart';
 import 'incomplete_checkout_management_screen.dart';
+import 'employee_analytics_screen.dart';
+import '../../utils/initialize_system_settings.dart';
 import '../../providers/incomplete_checkout_provider.dart';
 import '../../models/attendance_model.dart';
 
@@ -68,6 +70,9 @@ class _AdminDashboardState extends State<AdminDashboard>
     
     await settingsProvider.initialize();
     await shiftProvider.loadShifts();
+    
+    // Initialize system settings after authentication
+    await SystemSettingsInitializer.initializeAfterAuth();
   }
 
   @override
@@ -253,6 +258,12 @@ class _AdminDashboardState extends State<AdminDashboard>
                   builder: (context) => const IncompleteCheckoutManagementScreen(),
                 ),
               );
+            } else if (value == 'employee_analytics') {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const EmployeeAnalyticsScreen(),
+                ),
+              );
             } else if (value == 'time_management') {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -262,6 +273,16 @@ class _AdminDashboardState extends State<AdminDashboard>
             }
           },
           itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'employee_analytics',
+              child: Row(
+                children: [
+                  Icon(Icons.analytics, color: Colors.purple),
+                  SizedBox(width: 8),
+                  Text('Employee Analytics'),
+                ],
+              ),
+            ),
             const PopupMenuItem(
               value: 'time_management',
               child: Row(
@@ -1358,6 +1379,13 @@ class _AdminDashboardState extends State<AdminDashboard>
             mainAxisSpacing: 12,
             children: [
               _buildActionCard(
+                title: 'Employee Analytics',
+                subtitle: 'View detailed work stats',
+                icon: Icons.analytics,
+                color: Colors.purple,
+                onTap: _navigateToEmployeeAnalytics,
+              ),
+              _buildActionCard(
                 title: 'Time Management',
                 subtitle: 'Edit check-in/out times',
                 icon: Icons.access_time,
@@ -2145,6 +2173,14 @@ class _AdminDashboardState extends State<AdminDashboard>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const SettingsScreen(),
+      ),
+    );
+  }
+
+  void _navigateToEmployeeAnalytics() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const EmployeeAnalyticsScreen(),
       ),
     );
   }

@@ -17,7 +17,6 @@ import 'screens/admin/admin_dashboard.dart';
 import 'screens/super_admin/super_admin_home_screen.dart';
 import 'screens/system_locked_screen.dart';
 import 'screens/auth/login_screen.dart';
-import 'utils/initialize_system_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,9 +25,6 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-
-  // Initialize system settings to prevent permission errors
-  await SystemSettingsInitializer.initializeSystemSettings();
 
   runApp(const MyApp());
 }
