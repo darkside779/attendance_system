@@ -34,11 +34,14 @@ class _AttendanceTimeManagementScreenState extends State<AttendanceTimeManagemen
       _employees = snapshot.docs.map((doc) {
         final data = doc.data();
         return UserModel.fromJson({...data, 'userId': doc.id});
-      }).toList();
+      }).where((user) => user.role.toLowerCase() != 'superadmin').toList();
+      setState(() => _isLoading = false);
     } catch (e) {
-      setState(() => _errorMessage = 'Failed to load employees: $e');
+      setState(() {
+        _errorMessage = 'Failed to load employees: $e';
+        _isLoading = false;
+      });
     }
-    setState(() => _isLoading = false);
   }
 
   Future<void> _loadAttendanceForDate() async {
