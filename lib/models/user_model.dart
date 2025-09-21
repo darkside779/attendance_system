@@ -9,6 +9,7 @@ class UserModel {
   final String role; // 'employee', 'admin', or 'superadmin'
   final String? faceData;
   final String position;
+  final String? phoneNumber;
   final DateTime createdAt;
   final bool isActive;
   final String? assignedShiftId; // ID of the assigned shift
@@ -20,6 +21,7 @@ class UserModel {
     required this.role,
     this.faceData,
     required this.position,
+    this.phoneNumber,
     required this.createdAt,
     this.isActive = true,
     this.assignedShiftId,
@@ -34,6 +36,7 @@ class UserModel {
       'role': role,
       'faceData': faceData,
       'position': position,
+      'phoneNumber': phoneNumber,
       'createdAt': Timestamp.fromDate(createdAt),
       'isActive': isActive,
       'assignedShiftId': assignedShiftId,
@@ -49,6 +52,7 @@ class UserModel {
       role: json['role'] ?? 'employee',
       faceData: json['faceData'],
       position: json['position'] ?? '',
+      phoneNumber: json['phoneNumber'],
       createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isActive: json['isActive'] ?? true,
       assignedShiftId: json['assignedShiftId'],
@@ -72,6 +76,7 @@ class UserModel {
     String? role,
     String? faceData,
     String? position,
+    String? phoneNumber,
     DateTime? createdAt,
     bool? isActive,
     String? assignedShiftId,
@@ -83,6 +88,7 @@ class UserModel {
       role: role ?? this.role,
       faceData: faceData ?? this.faceData,
       position: position ?? this.position,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       assignedShiftId: assignedShiftId ?? this.assignedShiftId,

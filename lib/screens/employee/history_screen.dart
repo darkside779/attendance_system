@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, unused_local_variable
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -709,7 +709,71 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     );
   }
 
+  /// Calculate real statistics from attendance data using shift-based logic
+  Map<String, String> _calculateRealStatistics(AttendanceProvider attendanceProvider) {
+    final attendanceHistory = attendanceProvider.attendanceHistory;
+    
+    if (attendanceHistory.isEmpty) {
+      return {
+        'attendanceRate': '0%',
+        'totalHours': '0.0h',
+        'onTimeRate': '0%',
+        'lateDays': '0',
+      };
+    }
+    
+    // Get shift provider from context to calculate shift-based status
+    final shiftProvider = Provider.of<ShiftProvider>(context, listen: false);
+    
+    int total = attendanceHistory.length;
+    int present = 0;
+    int late = 0;
+    int absent = 0;
+    double totalWorkingHours = 0.0;
+    
+    // Calculate shift-based status for each record
+    for (final attendance in attendanceHistory) {
+      final shiftBasedStatus = _calculateShiftBasedStatus(attendance, shiftProvider);
+      
+      switch (shiftBasedStatus.status.toLowerCase()) {
+        case 'present':
+          present++;
+          break;
+        case 'late':
+          late++;
+          break;
+        case 'absent':
+          absent++;
+          break;
+      }
+      
+      // Add working hours if checked out
+      if (attendance.hasCheckedOut) {
+        totalWorkingHours += attendance.totalMinutes / 60.0;
+      }
+    }
+    
+    // Calculate attendance rate (present + late) / total
+    final attendanceRate = total > 0 
+        ? (((present + late) / total) * 100).round()
+        : 0;
+    
+    // Calculate on-time rate (present / (present + late))
+    final onTimeRate = (present + late) > 0
+        ? ((present / (present + late)) * 100).round()
+        : 0;
+    
+    return {
+      'attendanceRate': '$attendanceRate%',
+      'totalHours': '${totalWorkingHours.toStringAsFixed(1)}h',
+      'onTimeRate': '$onTimeRate%',
+      'lateDays': '$late',
+    };
+  }
+
   Widget _buildOverallStats(AttendanceProvider attendanceProvider) {
+    final stats = _calculateRealStatistics(attendanceProvider);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -733,25 +797,25 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
           children: [
             _StatCard(
               title: 'Attendance Rate',
-              value: '87%',
+              value: stats['attendanceRate']!,
               icon: Icons.trending_up,
               color: AppColors.success,
             ),
             _StatCard(
-              title: 'Average Hours',
-              value: '8.2h',
+              title: 'Total Hours',
+              value: stats['totalHours']!,
               icon: Icons.schedule,
               color: AppColors.info,
             ),
             _StatCard(
               title: 'On Time Rate',
-              value: '92%',
+              value: stats['onTimeRate']!,
               icon: Icons.access_time,
               color: AppColors.primary,
             ),
             _StatCard(
               title: 'Late Days',
-              value: '3',
+              value: stats['lateDays']!,
               icon: Icons.warning,
               color: AppColors.warning,
             ),
@@ -804,7 +868,79 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     );
   }
 
+  /// Calculate performance metrics from attendance data
+  Map<String, dynamic> _calculatePerformanceMetrics(AttendanceProvider attendanceProvider) {
+    final attendanceHistory = attendanceProvider.attendanceHistory;
+    final monthlyStats = attendanceProvider.monthlyStats;
+    
+    if (attendanceHistory.isEmpty) {
+      return {
+        'avgCheckInTime': 'No data',
+        'checkInTrend': 'No records',
+        'checkInTrendPositive': false,
+        'avgCheckOutTime': 'No data',
+        'checkOutTrend': 'No records',
+        'checkOutTrendPositive': false,
+        'totalHours': '0.0h',
+        'totalHoursTrend': 'No data',
+        'totalHoursTrendPositive': false,
+      };
+    }
+    
+    // Calculate average check-in time
+    final checkedInRecords = attendanceHistory.where((a) => a.checkInTime != null).toList();
+    final avgCheckInMinutes = checkedInRecords.isNotEmpty
+        ? checkedInRecords
+            .map((a) => a.checkInTime!.hour * 60 + a.checkInTime!.minute)
+            .reduce((a, b) => a + b) / checkedInRecords.length
+        : 0.0;
+    
+    final avgCheckInTime = checkedInRecords.isNotEmpty
+        ? _formatTimeFromMinutes(avgCheckInMinutes.round())
+        : 'No data';
+    
+    // Calculate average check-out time  
+    final checkedOutRecords = attendanceHistory.where((a) => a.checkOutTime != null).toList();
+    final avgCheckOutMinutes = checkedOutRecords.isNotEmpty
+        ? checkedOutRecords
+            .map((a) => a.checkOutTime!.hour * 60 + a.checkOutTime!.minute)
+            .reduce((a, b) => a + b) / checkedOutRecords.length
+        : 0.0;
+    
+    final avgCheckOutTime = checkedOutRecords.isNotEmpty
+        ? _formatTimeFromMinutes(avgCheckOutMinutes.round())
+        : 'No data';
+    
+    // Get total hours from monthly stats
+    final totalHours = monthlyStats['totalWorkingHours'] ?? '0.0';
+    final avgHours = monthlyStats['averageWorkingHours'] ?? '0.0';
+    
+    return {
+      'avgCheckInTime': avgCheckInTime,
+      'checkInTrend': checkedInRecords.isNotEmpty ? '${checkedInRecords.length} records' : 'No data',
+      'checkInTrendPositive': true,
+      'avgCheckOutTime': avgCheckOutTime,
+      'checkOutTrend': checkedOutRecords.isNotEmpty ? '${checkedOutRecords.length} records' : 'No data',
+      'checkOutTrendPositive': true,
+      'totalHours': '${totalHours}h',
+      'totalHoursTrend': '${avgHours}h/day avg',
+      'totalHoursTrendPositive': (double.tryParse(avgHours) ?? 0.0) >= 8.0,
+    };
+  }
+  
+  /// Format minutes to HH:MM AM/PM format
+  String _formatTimeFromMinutes(int totalMinutes) {
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    final period = hours >= 12 ? 'PM' : 'AM';
+    final displayHour = hours == 0 ? 12 : (hours > 12 ? hours - 12 : hours);
+    
+    return '${displayHour.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')} $period';
+  }
+
   Widget _buildPerformanceMetrics(AttendanceProvider attendanceProvider) {
+    final performanceData = _calculatePerformanceMetrics(attendanceProvider);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -820,21 +956,21 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
         
         _MetricRow(
           title: 'Average Check-in Time',
-          value: '9:15 AM',
-          trend: '5 min late',
-          isPositive: false,
+          value: performanceData['avgCheckInTime']!,
+          trend: performanceData['checkInTrend']!,
+          isPositive: performanceData['checkInTrendPositive'] as bool,
         ),
         _MetricRow(
           title: 'Average Check-out Time',
-          value: '6:30 PM',
-          trend: '30 min overtime',
-          isPositive: true,
+          value: performanceData['avgCheckOutTime']!,
+          trend: performanceData['checkOutTrend']!,
+          isPositive: performanceData['checkOutTrendPositive'] as bool,
         ),
         _MetricRow(
-          title: 'Most Productive Day',
-          value: 'Wednesday',
-          trend: '9.2 avg hours',
-          isPositive: true,
+          title: 'Total Working Hours',
+          value: performanceData['totalHours']!,
+          trend: performanceData['totalHoursTrend']!,
+          isPositive: performanceData['totalHoursTrendPositive'] as bool,
         ),
       ],
     );
@@ -1022,26 +1158,24 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> with 
     final checkInTime = attendance.checkInTime!;
     final checkInMinutes = checkInTime.hour * 60 + checkInTime.minute;
     
-    // Parse shift start and end times
+    // Parse shift start time
     final shiftStartParts = employeeShift.startTime.split(':');
     final shiftStartMinutes = int.parse(shiftStartParts[0]) * 60 + int.parse(shiftStartParts[1]);
     
-    final shiftEndParts = employeeShift.endTime.split(':');
-    final shiftEndMinutes = int.parse(shiftEndParts[0]) * 60 + int.parse(shiftEndParts[1]);
-    
-    // Check if check-in is outside the shift window (including reasonable buffer)
-    // Allow check-in up to 2 hours after shift end for flexibility
-    final extendedShiftEndMinutes = shiftEndMinutes + 120; // 2 hours buffer
-    
-    if (checkInMinutes < shiftStartMinutes || checkInMinutes > extendedShiftEndMinutes) {
-      return (status: 'absent', lateInfo: 'Check-in outside shift hours');
-    }
-
     // Check if within normal shift hours
     final graceEndMinutes = shiftStartMinutes + employeeShift.gracePeriodMinutes;
 
-    if (checkInMinutes <= shiftStartMinutes) {
-      return (status: 'present', lateInfo: null);
+    // Define acceptable check-in window (1 hour before to 4 hours after shift start)
+    final earlyWindow = shiftStartMinutes - 60; // 1 hour before
+    final lateWindow = shiftStartMinutes + 240; // 4 hours after
+    
+    if (checkInMinutes < earlyWindow || checkInMinutes > lateWindow) {
+      // Check-in is way outside shift window - mark as late (worked wrong hours)
+      final minutesDifference = (checkInMinutes - shiftStartMinutes).abs();
+      final hours = minutesDifference ~/ 60;
+      final minutes = minutesDifference % 60;
+      final lateInfo = hours > 0 ? '${hours}h ${minutes}min off schedule' : '${minutes}min off schedule';
+      return (status: 'late', lateInfo: lateInfo);
     } else if (checkInMinutes <= graceEndMinutes) {
       return (status: 'present', lateInfo: null);
     } else {
@@ -1220,11 +1354,15 @@ class _MetricRow extends StatelessWidget {
                   color: isPositive ? AppColors.success : AppColors.warning,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  trend,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isPositive ? AppColors.success : AppColors.warning,
+                Expanded(
+                  child: Text(
+                    trend,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isPositive ? AppColors.success : AppColors.warning,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
               ],

@@ -5,7 +5,7 @@ import '../models/attendance_model.dart';
 import '../providers/incomplete_checkout_provider.dart';
 import '../providers/shift_provider.dart';
 
-class IncompleteCheckoutWarning extends StatelessWidget {
+class IncompleteCheckoutWarning extends StatefulWidget {
   final String userId;
   
   const IncompleteCheckoutWarning({
@@ -14,11 +14,23 @@ class IncompleteCheckoutWarning extends StatelessWidget {
   });
 
   @override
+  State<IncompleteCheckoutWarning> createState() => _IncompleteCheckoutWarningState();
+}
+
+class _IncompleteCheckoutWarningState extends State<IncompleteCheckoutWarning> {
+  bool _isDismissed = false;
+
+  @override
   Widget build(BuildContext context) {
     return Consumer2<IncompleteCheckoutProvider, ShiftProvider>(
       builder: (context, incompleteProvider, shiftProvider, child) {
+        // Don't show if dismissed
+        if (_isDismissed) {
+          return const SizedBox.shrink();
+        }
+        
         return FutureBuilder<AttendanceModel?>(
-          future: incompleteProvider.checkUserIncompleteCheckout(userId),
+          future: incompleteProvider.checkUserIncompleteCheckout(widget.userId),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox.shrink();
@@ -31,64 +43,160 @@ class IncompleteCheckoutWarning extends StatelessWidget {
             
             return Container(
               margin: const EdgeInsets.all(16),
-              child: Card(
-                color: Colors.orange[50],
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.warning,
-                            color: Colors.orange[700],
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Incomplete Checkout',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange[700],
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(16),
+                shadowColor: Colors.orange.withValues(alpha: 0.3),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.orange[50]!,
+                        Colors.orange[100]!,
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.orange[300]!,
+                      width: 1,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Header with close button
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[600],
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.warning_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        incompleteProvider.getUserWarningMessage(incompleteCheckout),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Incomplete Checkout',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange[800],
+                                ),
+                              ),
+                            ),
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () {
+                                  setState(() {
+                                    _isDismissed = true;
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    color: Colors.grey[600],
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildCheckoutDetails(incompleteCheckout),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => _showCheckoutHelpDialog(context),
-                            child: const Text('Need Help?'),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Warning message
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange[200]!),
                           ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: () => _contactAdmin(context),
-                            icon: const Icon(Icons.phone, size: 16),
-                            label: const Text('Contact Admin'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange[700],
-                              foregroundColor: Colors.white,
+                          child: Text(
+                            incompleteProvider.getUserWarningMessage(incompleteCheckout),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[800],
+                              height: 1.4,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Details section
+                        _buildCheckoutDetails(incompleteCheckout),
+                        
+                        const SizedBox(height: 20),
+                        
+                        // Action buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showCheckoutHelpDialog(context),
+                                icon: Icon(
+                                  Icons.help_outline_rounded,
+                                  size: 16,
+                                  color: Colors.orange[700],
+                                ),
+                                label: Text(
+                                  'Need Help?',
+                                  style: TextStyle(
+                                    color: Colors.orange[700],
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: Colors.orange[300]!),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _contactAdmin(context),
+                                icon: const Icon(Icons.phone_rounded, size: 16),
+                                label: const Text(
+                                  'Contact Admin',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange[600],
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -101,38 +209,89 @@ class IncompleteCheckoutWarning extends StatelessWidget {
   
   Widget _buildCheckoutDetails(AttendanceModel incompleteCheckout) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.access_time, size: 16, color: Colors.grey),
-              const SizedBox(width: 4),
-              Text(
-                'Check-in Time: ${_formatDateTime(incompleteCheckout.checkInTime!)}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-              ),
-            ],
+          Text(
+            'Checkout Details',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.orange[800],
+            ),
           ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.date_range, size: 16, color: Colors.grey),
-              const SizedBox(width: 4),
-              Text(
-                'Date: ${_formatDate(incompleteCheckout.date)}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-              ),
-            ],
+          const SizedBox(height: 12),
+          _buildDetailRow(
+            Icons.access_time_rounded,
+            'Check-in Time',
+            _formatDateTime(incompleteCheckout.checkInTime!),
+            Colors.blue[600]!,
+          ),
+          const SizedBox(height: 8),
+          _buildDetailRow(
+            Icons.calendar_today_rounded,
+            'Date',
+            _formatDate(incompleteCheckout.date),
+            Colors.green[600]!,
           ),
         ],
       ),
+    );
+  }
+  
+  Widget _buildDetailRow(IconData icon, String label, String value, Color iconColor) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            icon,
+            size: 14,
+            color: iconColor,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
   

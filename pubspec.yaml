@@ -64,6 +64,7 @@ dependencies:
   
   # Permissions
   permission_handler: ^11.1.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

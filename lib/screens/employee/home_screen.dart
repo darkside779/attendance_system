@@ -1,5 +1,6 @@
 // ignore_for_file: unused_import, use_build_context_synchronously, deprecated_member_use, avoid_print
 
+import 'package:attendance_system/widgets/attendance_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_strings.dart';
@@ -10,15 +11,21 @@ import '../../providers/location_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/shift_provider.dart';
 import '../../widgets/loading_widget.dart';
+import '../../models/attendance_model.dart';
+import '../../models/shift_model.dart';
+import 'check_in_screen.dart';
 import 'face_management_screen.dart';
-import '../../widgets/attendance_card.dart';
+import 'history_screen.dart';
+import 'personal_info_screen.dart';
+import 'security_screen.dart';
+import 'settings_screen.dart';
+import 'help_support_screen.dart';
+import 'package:intl/intl.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/system_lock_guard.dart';
 import '../../widgets/incomplete_checkout_warning.dart';
 import '../../models/settings_model.dart';
 import '../auth/login_screen.dart';
-import 'check_in_screen.dart';
-import 'history_screen.dart';
 
 class EmployeeHomeScreen extends StatefulWidget {
   const EmployeeHomeScreen({super.key});
@@ -851,7 +858,11 @@ class _ProfileTab extends StatelessWidget {
                   icon: Icons.person_outline,
                   title: 'Personal Information',
                   subtitle: 'Edit your profile details',
-                  onTap: () => _showComingSoon(context),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const PersonalInformationScreen(),
+                    ),
+                  ),
                 ),
                 _ProfileOption(
                   icon: Icons.face,
@@ -867,19 +878,31 @@ class _ProfileTab extends StatelessWidget {
                   icon: Icons.security,
                   title: 'Security',
                   subtitle: 'Change password',
-                  onTap: () => _showComingSoon(context),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const SecurityScreen(),
+                    ),
+                  ),
                 ),
                 _ProfileOption(
                   icon: Icons.settings,
                   title: 'Settings',
                   subtitle: 'App preferences',
-                  onTap: () => _showComingSoon(context),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
+                  ),
                 ),
                 _ProfileOption(
                   icon: Icons.help_outline,
                   title: 'Help & Support',
                   subtitle: 'Get help and support',
-                  onTap: () => _showComingSoon(context),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const HelpSupportScreen(),
+                    ),
+                  ),
                 ),
                 
                 const SizedBox(height: 24),
@@ -898,14 +921,6 @@ class _ProfileTab extends StatelessWidget {
     );
   }
 
-  void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Coming soon!'),
-        duration: Duration(seconds: 1),
-      ),
-    );
-  }
 
   Future<void> _handleLogout(BuildContext context) async {
     final confirm = await showDialog<bool>(
