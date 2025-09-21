@@ -89,31 +89,111 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
           _ProfileTab(),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.grey,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'History',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
+      bottomNavigationBar: _buildModernBottomNavBar(),
+      ),
+    );
+  }
+
+  Widget _buildModernBottomNavBar() {
+    return Container(
+      height: 70,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(
+            icon: Icons.home_rounded,
+            label: 'Home',
+            index: 0,
+            isSelected: _currentIndex == 0,
+          ),
+          _buildNavItem(
+            icon: Icons.history_rounded,
+            label: 'History',
+            index: 1,
+            isSelected: _currentIndex == 1,
+          ),
+          _buildNavItem(
+            icon: Icons.person_rounded,
+            label: 'Profile',
+            index: 2,
+            isSelected: _currentIndex == 2,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    required bool isSelected,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: isSelected 
+                    ? AppColors.primary 
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected 
+                    ? Colors.white 
+                    : AppColors.grey,
+                size: isSelected ? 24 : 22,
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                color: isSelected 
+                    ? AppColors.primary 
+                    : AppColors.grey,
+                fontSize: isSelected ? 12 : 11,
+                fontWeight: isSelected 
+                    ? FontWeight.w600 
+                    : FontWeight.w500,
+              ),
+              child: Text(label),
+            ),
+          ],
+        ),
       ),
     );
   }
