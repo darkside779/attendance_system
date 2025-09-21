@@ -76,6 +76,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  
+  # App Icon Generator
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -118,3 +121,22 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/user-check-512.png" 
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/user-check-512.png"
+    background_color: "#2E7BFF"  # Your AppColors.primary
+    theme_color: "#2E7BFF"       # Your AppColors.primary
+  windows:
+    generate: true
+    image_path: "assets/icon/user-check-512.png"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "assets/icon/user-check-512.png"
