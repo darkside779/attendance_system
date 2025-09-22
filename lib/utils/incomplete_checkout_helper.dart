@@ -78,6 +78,7 @@ class IncompleteCheckoutHelper {
             final userData = userDoc.data() as Map<String, dynamic>;
             users.add(UserModel.fromJson({...userData, 'userId': userId}));
           }
+        // ignore: empty_catches
         } catch (e) {
         }
       }

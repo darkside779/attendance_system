@@ -33,6 +33,7 @@ class SystemSettingsInitializer {
     // Only try to initialize if user is authenticated
     try {
       await initializeSystemSettings();
+    // ignore: empty_catches
     } catch (e) {
     }
   }

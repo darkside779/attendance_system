@@ -67,12 +67,13 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   Future<void> _initializeSettings() async {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
     final shiftProvider = Provider.of<ShiftProvider>(context, listen: false);
-    
+
     await settingsProvider.initialize();
     await shiftProvider.loadShifts();
-    
+
     // Initialize system settings after authentication
     await SystemSettingsInitializer.initializeAfterAuth();
   }
@@ -88,24 +89,27 @@ class _AdminDashboardState extends State<AdminDashboard>
     final provider = context.read<AdminAttendanceProvider>();
     final incompleteProvider = context.read<IncompleteCheckoutProvider>();
     print('🔄 Admin Dashboard: Loading data...');
-    
+
     try {
       // Load employees first so we can display names
       await provider.loadEmployees();
       print('✅ Employees loaded: ${provider.employees.length} employees');
-      
-      await provider.loadTodayAttendance();
-      print('✅ Today attendance loaded: ${provider.todayAttendance.length} records');
-      
+
       await provider.loadTodayAttendanceSummary();
-      print('✅ Today summary loaded: ${provider.todayAttendanceSummary.length} summaries');
-      
+      print(
+          '✅ Today attendance loaded: ${provider.todayAttendance.length} records');
+
+      await provider.loadTodayAttendanceSummary();
+      print(
+          '✅ Today summary loaded: ${provider.todayAttendanceSummary.length} summaries');
+
       await provider.loadMonthlyStats();
       print('✅ Monthly stats loaded: ${provider.todayStats}');
-      
+
       // Load incomplete checkouts for notification badge
       await incompleteProvider.loadIncompleteCheckouts();
-      print('✅ Incomplete checkouts loaded: ${incompleteProvider.incompleteCheckoutsCount} found');
+      print(
+          '✅ Incomplete checkouts loaded: ${incompleteProvider.incompleteCheckoutsCount} found');
     } catch (e) {
       print('❌ Error loading admin data: $e');
     }
@@ -126,38 +130,38 @@ class _AdminDashboardState extends State<AdminDashboard>
   Widget build(BuildContext context) {
     return SystemLockGuard(
       child: Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: Consumer<AdminAttendanceProvider>(
-          builder: (context, provider, child) {
-            if (provider.isLoading && provider.todayAttendance.isEmpty) {
-              return const Center(child: CircularProgressIndicator());
-            }
+        backgroundColor: Colors.grey[50],
+        body: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Consumer<AdminAttendanceProvider>(
+            builder: (context, provider, child) {
+              if (provider.isLoading && provider.todayAttendance.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-            return CustomScrollView(
-              slivers: [
-                _buildModernAppBar(),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildWelcomeSection(),
-                        const SizedBox(height: 24),
-                        _buildQuickStatsGrid(provider),
-                        const SizedBox(height: 24),
-                        _buildTabSection(provider),
-                      ],
+              return CustomScrollView(
+                slivers: [
+                  _buildModernAppBar(),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildWelcomeSection(),
+                          const SizedBox(height: 24),
+                          _buildQuickStatsGrid(provider),
+                          const SizedBox(height: 24),
+                          _buildTabSection(provider),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
-      ),
       ),
     );
   }
@@ -206,7 +210,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (context) => const IncompleteCheckoutManagementScreen(),
+                        builder: (context) =>
+                            const IncompleteCheckoutManagementScreen(),
                       ),
                     );
                   },
@@ -257,7 +262,8 @@ class _AdminDashboardState extends State<AdminDashboard>
             } else if (value == 'incomplete_checkouts') {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => const IncompleteCheckoutManagementScreen(),
+                  builder: (context) =>
+                      const IncompleteCheckoutManagementScreen(),
                 ),
               );
             } else if (value == 'employee_analytics') {
@@ -643,16 +649,18 @@ class _AdminDashboardState extends State<AdminDashboard>
             child: provider.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : provider.errorMessage != null
-                ? _buildErrorState(provider.errorMessage!)
-                : provider.todayAttendance.isEmpty
-                ? _buildEmptyState('No attendance records for today')
-                : ListView.builder(
-                    itemCount: provider.todayAttendance.length.clamp(0, 5),
-                    itemBuilder: (context, index) {
-                      final attendance = provider.todayAttendance[index];
-                      return _buildActivityCard(attendance, provider);
-                    },
-                  ),
+                    ? _buildErrorState(provider.errorMessage!)
+                    : provider.todayAttendance.isEmpty
+                        ? _buildEmptyState('No attendance records for today')
+                        : ListView.builder(
+                            itemCount:
+                                provider.todayAttendance.length.clamp(0, 5),
+                            itemBuilder: (context, index) {
+                              final attendance =
+                                  provider.todayAttendance[index];
+                              return _buildActivityCard(attendance, provider);
+                            },
+                          ),
           ),
         ],
       ),
@@ -710,7 +718,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   Widget _buildAnalyticsTab(AdminAttendanceProvider provider) {
     final stats = _calculateAnalytics(provider);
-    
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: SingleChildScrollView(
@@ -725,23 +733,23 @@ class _AdminDashboardState extends State<AdminDashboard>
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Monthly Statistics
             _buildMonthlyStats(stats),
             const SizedBox(height: 24),
-            
+
             // Attendance Breakdown
             _buildAttendanceBreakdown(stats),
             const SizedBox(height: 24),
-            
+
             // Performance Metrics
             _buildPerformanceMetrics(stats),
             const SizedBox(height: 24),
-            
+
             // Shift Overview
             _buildShiftOverview(),
             const SizedBox(height: 24),
-            
+
             // Quick Actions
             _buildQuickActions(provider),
           ],
@@ -750,7 +758,8 @@ class _AdminDashboardState extends State<AdminDashboard>
     );
   }
 
-  Widget _buildActivityCard(AttendanceModel attendance, AdminAttendanceProvider provider) {
+  Widget _buildActivityCard(
+      AttendanceModel attendance, AdminAttendanceProvider provider) {
     // Get the actual user from the employees list
     final employee = provider.getEmployeeById(attendance.userId);
     final employeeName = employee?.name ?? 'Unknown User';
@@ -758,7 +767,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
     Color statusColor;
     IconData statusIcon;
-    
+
     switch (attendance.status.toLowerCase()) {
       case 'present':
         statusColor = Colors.green;
@@ -849,10 +858,11 @@ class _AdminDashboardState extends State<AdminDashboard>
     );
   }
 
-  Widget _buildAttendanceCard(AttendanceModel attendance, AdminAttendanceProvider provider) {
+  Widget _buildAttendanceCard(
+      AttendanceModel attendance, AdminAttendanceProvider provider) {
     final status = attendance.status;
     Color statusColor;
-    
+
     switch (status.toLowerCase()) {
       case 'present':
         statusColor = Colors.green;
@@ -877,7 +887,7 @@ class _AdminDashboardState extends State<AdminDashboard>
         leading: CircleAvatar(
           backgroundColor: statusColor.withValues(alpha: 0.1),
           child: Text(
-            employeeName.length >= 2 
+            employeeName.length >= 2
                 ? employeeName.substring(0, 2).toUpperCase()
                 : employeeName.toUpperCase(),
             style: TextStyle(
@@ -889,23 +899,25 @@ class _AdminDashboardState extends State<AdminDashboard>
         title: Text(employeeName),
         subtitle: Consumer<ShiftProvider>(
           builder: (context, shiftProvider, child) {
-            String timeText = attendance.checkInTime != null 
-              ? DateFormat('HH:mm').format(attendance.checkInTime!)
-              : 'No check-in time';
-            
+            String timeText = attendance.checkInTime != null
+                ? DateFormat('HH:mm').format(attendance.checkInTime!)
+                : 'No check-in time';
+
             // Add shift information if available
             if (shiftProvider.hasShifts && attendance.checkInTime != null) {
               // Find all shifts that match the check-in time
               final matchingShifts = shiftProvider.activeShifts
-                  .where((shift) => shift.isWithinShiftWindow(attendance.checkInTime!))
+                  .where((shift) =>
+                      shift.isWithinShiftWindow(attendance.checkInTime!))
                   .toList();
-              
+
               if (matchingShifts.isNotEmpty) {
                 // Prefer "noon Shift" over "moring Shift" for this user (based on screenshot)
                 final noonShift = matchingShifts
-                    .where((shift) => shift.shiftName.toLowerCase().contains('noon'))
+                    .where((shift) =>
+                        shift.shiftName.toLowerCase().contains('noon'))
                     .firstOrNull;
-                
+
                 if (noonShift != null) {
                   timeText += ' • ${noonShift.shiftName}';
                 } else {
@@ -914,7 +926,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                 }
               }
             }
-            
+
             return Text(timeText);
           },
         ),
@@ -941,7 +953,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                 if (value == 'edit') {
                   _editAttendanceFromOverview(attendance);
                 } else if (value == 'delete') {
-                  _deleteAttendanceFromOverview(attendance, provider, employeeName);
+                  _deleteAttendanceFromOverview(
+                      attendance, provider, employeeName);
                 }
               },
               itemBuilder: (context) => [
@@ -1107,21 +1120,23 @@ class _AdminDashboardState extends State<AdminDashboard>
   Map<String, dynamic> _calculateAnalytics(AdminAttendanceProvider provider) {
     final employees = provider.employees;
     final todayAttendance = provider.todayAttendance;
-    final thisMonthAttendance = provider.todayAttendance; // Using today's data for now
-    
+    final thisMonthAttendance =
+        provider.todayAttendance; // Using today's data for now
+
     int totalEmployees = employees.length;
-    int presentToday = todayAttendance.where((a) => a.status == 'present').length;
+    int presentToday =
+        todayAttendance.where((a) => a.status == 'present').length;
     int absentToday = totalEmployees - presentToday;
     int lateToday = todayAttendance.where((a) => a.status == 'late').length;
-    
+
     // Monthly calculations
     int workingDaysThisMonth = DateTime.now().day; // Simplified
     int totalPossibleAttendance = totalEmployees * workingDaysThisMonth;
     int actualAttendance = thisMonthAttendance.length;
-    double attendanceRate = totalPossibleAttendance > 0 
-        ? (actualAttendance / totalPossibleAttendance * 100) 
+    double attendanceRate = totalPossibleAttendance > 0
+        ? (actualAttendance / totalPossibleAttendance * 100)
         : 0.0;
-    
+
     return {
       'totalEmployees': totalEmployees,
       'presentToday': presentToday,
@@ -1278,8 +1293,9 @@ class _AdminDashboardState extends State<AdminDashboard>
           const SizedBox(height: 12),
           _buildProgressIndicator(
             'On-time Arrivals',
-            stats['presentToday'] > 0 
-                ? (stats['presentToday'] - stats['lateToday']) / stats['presentToday']
+            stats['presentToday'] > 0
+                ? (stats['presentToday'] - stats['lateToday']) /
+                    stats['presentToday']
                 : 0.0,
             Colors.green,
           ),
@@ -1434,28 +1450,24 @@ class _AdminDashboardState extends State<AdminDashboard>
           children: [
             const Text('Choose the date range for your attendance report:'),
             const SizedBox(height: 16),
-            
             ListTile(
               leading: Icon(Icons.today, color: Colors.blue),
               title: const Text('Today'),
               subtitle: const Text('Export today\'s attendance data'),
               onTap: () => _performExport(context, 'today'),
             ),
-            
             ListTile(
               leading: Icon(Icons.calendar_view_week, color: Colors.green),
               title: const Text('This Week'),
               subtitle: const Text('Export this week\'s attendance data'),
               onTap: () => _performExport(context, 'week'),
             ),
-            
             ListTile(
               leading: Icon(Icons.calendar_month, color: Colors.orange),
               title: const Text('This Month'),
               subtitle: const Text('Export this month\'s attendance data'),
               onTap: () => _performExport(context, 'month'),
             ),
-            
             ListTile(
               leading: Icon(Icons.date_range, color: Colors.purple),
               title: const Text('Custom Range'),
@@ -1532,7 +1544,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   void _performExport(BuildContext context, String period) async {
     Navigator.pop(context); // Close the dialog
-    
+
     try {
       // Show loading indicator
       showDialog(
@@ -1548,13 +1560,14 @@ class _AdminDashboardState extends State<AdminDashboard>
           ),
         ),
       );
-      
-      final adminProvider = Provider.of<AdminAttendanceProvider>(context, listen: false);
-      
+
+      final adminProvider =
+          Provider.of<AdminAttendanceProvider>(context, listen: false);
+
       // Calculate date range based on period
       DateTime startDate;
       DateTime endDate = DateTime.now();
-      
+
       switch (period) {
         case 'today':
           startDate = DateTime(endDate.year, endDate.month, endDate.day);
@@ -1570,43 +1583,46 @@ class _AdminDashboardState extends State<AdminDashboard>
         default:
           startDate = DateTime(endDate.year, endDate.month, 1);
       }
-      
+
       // Load attendance data for the period
       await adminProvider.loadAttendanceRecords(startDate, endDate);
       final attendanceData = adminProvider.allAttendanceRecords;
-      
+
       // Generate CSV content
-      String csvContent = 'Employee Name,Role,Date,Check In,Check Out,Status,Total Hours\n';
-      
+      String csvContent =
+          'Employee Name,Role,Date,Check In,Check Out,Status,Total Hours\n';
+
       for (final attendance in attendanceData) {
         final employee = adminProvider.getEmployeeById(attendance.userId);
         final employeeName = employee?.name ?? 'Unknown';
         final employeeRole = employee?.role ?? 'Staff';
-        final checkIn = attendance.checkInTime != null 
+        final checkIn = attendance.checkInTime != null
             ? '${attendance.checkInTime!.hour.toString().padLeft(2, '0')}:${attendance.checkInTime!.minute.toString().padLeft(2, '0')}'
             : 'Not recorded';
-        final checkOut = attendance.checkOutTime != null 
+        final checkOut = attendance.checkOutTime != null
             ? '${attendance.checkOutTime!.hour.toString().padLeft(2, '0')}:${attendance.checkOutTime!.minute.toString().padLeft(2, '0')}'
             : 'Not recorded';
-        final totalHours = attendance.hasCheckedOut 
+        final totalHours = attendance.hasCheckedOut
             ? '${(attendance.totalMinutes / 60).toStringAsFixed(2)} hrs'
             : 'In progress';
-        final dateStr = '${attendance.date.day}/${attendance.date.month}/${attendance.date.year}';
-        
-        csvContent += '"$employeeName","$employeeRole","$dateStr","$checkIn","$checkOut","${attendance.status}","$totalHours"\n';
+        final dateStr =
+            '${attendance.date.day}/${attendance.date.month}/${attendance.date.year}';
+
+        csvContent +=
+            '"$employeeName","$employeeRole","$dateStr","$checkIn","$checkOut","${attendance.status}","$totalHours"\n';
       }
-      
+
       // Always try to close loading dialog first
       try {
         Navigator.pop(context); // Close loading dialog
       } catch (e) {
         // Failed to close loading dialog
       }
-      
+
       if (context.mounted) {
         // Trigger CSV download
         _downloadCsv(csvContent, 'attendance_$period.csv');
-        
+
         // Show success message
         showDialog(
           context: context,
@@ -1622,7 +1638,8 @@ class _AdminDashboardState extends State<AdminDashboard>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('✅ Exported ${attendanceData.length} attendance records for $period'),
+                Text(
+                    '✅ Exported ${attendanceData.length} attendance records for $period'),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1636,22 +1653,27 @@ class _AdminDashboardState extends State<AdminDashboard>
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.file_download, color: Colors.green, size: 20),
+                          Icon(Icons.file_download,
+                              color: Colors.green, size: 20),
                           const SizedBox(width: 8),
-                          const Text('CSV file downloaded!', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text('CSV file downloaded!',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text('File: attendance_$period.csv'),
                       Text('Records: ${attendanceData.length}'),
-                      Text('Size: ${(csvContent.length / 1024).toStringAsFixed(1)} KB'),
+                      Text(
+                          'Size: ${(csvContent.length / 1024).toStringAsFixed(1)} KB'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Columns included:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('Columns included:',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                const Text('• Employee Name  • Role  • Date\n• Check In  • Check Out  • Status  • Total Hours'),
+                const Text(
+                    '• Employee Name  • Role  • Date\n• Check In  • Check Out  • Status  • Total Hours'),
               ],
             ),
             actions: [
@@ -1663,7 +1685,6 @@ class _AdminDashboardState extends State<AdminDashboard>
           ),
         );
       }
-      
     } catch (e) {
       // Always try to close loading dialog on error
       try {
@@ -1671,7 +1692,7 @@ class _AdminDashboardState extends State<AdminDashboard>
       } catch (navError) {
         // Could not close dialog
       }
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1685,7 +1706,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   void _showCustomDateRangeExport(BuildContext context) async {
     Navigator.pop(context); // Close current dialog
-    
+
     final DateTimeRange? dateRange = await showDateRangePicker(
       context: context,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
@@ -1695,7 +1716,7 @@ class _AdminDashboardState extends State<AdminDashboard>
         end: DateTime.now(),
       ),
     );
-    
+
     if (dateRange != null) {
       try {
         // Show loading indicator
@@ -1712,34 +1733,36 @@ class _AdminDashboardState extends State<AdminDashboard>
             ),
           ),
         );
-        
-        final adminProvider = Provider.of<AdminAttendanceProvider>(context, listen: false);
-        await adminProvider.loadAttendanceRecords(dateRange.start, dateRange.end);
-        
+
+        final adminProvider =
+            Provider.of<AdminAttendanceProvider>(context, listen: false);
+        await adminProvider.loadAttendanceRecords(
+            dateRange.start, dateRange.end);
+
         if (context.mounted) {
           Navigator.pop(context); // Close loading dialog
-          
+
           final attendanceData = adminProvider.allAttendanceRecords;
-          
+
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-            title: const Text('Custom Range Export'),
-            content: Text('Exported ${attendanceData.length} records from ${dateRange.start.day}/${dateRange.start.month}/${dateRange.start.year} to ${dateRange.end.day}/${dateRange.end.month}/${dateRange.end.year}'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
+              title: const Text('Custom Range Export'),
+              content: Text(
+                  'Exported ${attendanceData.length} records from ${dateRange.start.day}/${dateRange.start.month}/${dateRange.start.year} to ${dateRange.end.day}/${dateRange.end.month}/${dateRange.end.year}'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
         }
-        
       } catch (e) {
         if (context.mounted) {
           Navigator.pop(context); // Close loading dialog if open
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Custom export failed: $e'),
@@ -1783,22 +1806,28 @@ class _AdminDashboardState extends State<AdminDashboard>
           builder: (context, provider, child) {
             final todayAttendance = provider.todayAttendance;
             final totalEmployees = provider.employees.length;
-            final presentCount = todayAttendance.where((a) => a.status == 'present' || a.status == 'late').length;
-            final lateCount = todayAttendance.where((a) => a.status == 'late').length;
+            final presentCount = todayAttendance
+                .where((a) => a.status == 'present' || a.status == 'late')
+                .length;
+            final lateCount =
+                todayAttendance.where((a) => a.status == 'late').length;
             final absentCount = totalEmployees - presentCount;
-            
+
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}'),
+                Text(
+                    'Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}'),
                 const SizedBox(height: 16),
-                _buildReportStat('Total Employees', '$totalEmployees', Colors.blue),
+                _buildReportStat(
+                    'Total Employees', '$totalEmployees', Colors.blue),
                 _buildReportStat('Present', '$presentCount', Colors.green),
                 _buildReportStat('Late', '$lateCount', Colors.orange),
                 _buildReportStat('Absent', '$absentCount', Colors.red),
                 const SizedBox(height: 16),
-                Text('Attendance Rate: ${totalEmployees > 0 ? ((presentCount / totalEmployees) * 100).toStringAsFixed(1) : 0}%'),
+                Text(
+                    'Attendance Rate: ${totalEmployees > 0 ? ((presentCount / totalEmployees) * 100).toStringAsFixed(1) : 0}%'),
               ],
             );
           },
@@ -1836,20 +1865,26 @@ class _AdminDashboardState extends State<AdminDashboard>
         content: Consumer<AdminAttendanceProvider>(
           builder: (context, provider, child) {
             final monthlyStats = provider.monthlyStats;
-            
+
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Month: ${DateTime.now().month}/${DateTime.now().year}'),
                 const SizedBox(height: 16),
-                _buildReportStat('Total Records', '${monthlyStats['total'] ?? 0}', Colors.blue),
-                _buildReportStat('Present Days', '${monthlyStats['present'] ?? 0}', Colors.green),
-                _buildReportStat('Late Days', '${monthlyStats['late'] ?? 0}', Colors.orange),
-                _buildReportStat('Absent Days', '${monthlyStats['absent'] ?? 0}', Colors.red),
+                _buildReportStat('Total Records',
+                    '${monthlyStats['total'] ?? 0}', Colors.blue),
+                _buildReportStat('Present Days',
+                    '${monthlyStats['present'] ?? 0}', Colors.green),
+                _buildReportStat(
+                    'Late Days', '${monthlyStats['late'] ?? 0}', Colors.orange),
+                _buildReportStat('Absent Days',
+                    '${monthlyStats['absent'] ?? 0}', Colors.red),
                 const SizedBox(height: 16),
-                Text('Average Working Hours: ${monthlyStats['averageWorkingHours'] ?? '0.0'}/day'),
-                Text('Total Working Hours: ${monthlyStats['totalWorkingHours'] ?? '0.0'}'),
+                Text(
+                    'Average Working Hours: ${monthlyStats['averageWorkingHours'] ?? '0.0'}/day'),
+                Text(
+                    'Total Working Hours: ${monthlyStats['totalWorkingHours'] ?? '0.0'}'),
               ],
             );
           },
@@ -1893,7 +1928,8 @@ class _AdminDashboardState extends State<AdminDashboard>
             const Text('Custom Report'),
           ],
         ),
-        content: const Text('Select a date range to generate a custom attendance report.'),
+        content: const Text(
+            'Select a date range to generate a custom attendance report.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1911,11 +1947,12 @@ class _AdminDashboardState extends State<AdminDashboard>
                   end: DateTime.now(),
                 ),
               );
-              
+
               if (dateRange != null) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Custom report generated for ${dateRange.start.day}/${dateRange.start.month} - ${dateRange.end.day}/${dateRange.end.month}'),
+                    content: Text(
+                        'Custom report generated for ${dateRange.start.day}/${dateRange.start.month} - ${dateRange.end.day}/${dateRange.end.month}'),
                   ),
                 );
               }
@@ -1962,7 +1999,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   void _showCsvContent(String csvContent, String filename) {
     if (!context.mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1977,7 +2014,7 @@ class _AdminDashboardState extends State<AdminDashboard>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(kIsWeb 
+            Text(kIsWeb
                 ? 'Your CSV file "$filename" is ready. Copy the content below:'
                 : 'CSV export complete. Copy the content below and save as "$filename":'),
             const SizedBox(height: 16),
@@ -1994,7 +2031,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                 child: SelectableText(
                   csvContent,
                   style: const TextStyle(
-                    fontFamily: 'monospace', 
+                    fontFamily: 'monospace',
                     fontSize: 11,
                   ),
                 ),
@@ -2074,7 +2111,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                     CircleAvatar(
                       backgroundColor: Colors.blue[100],
                       child: Text(
-                        employeeName.length >= 2 
+                        employeeName.length >= 2
                             ? employeeName.substring(0, 2).toUpperCase()
                             : employeeName.toUpperCase(),
                         style: TextStyle(
@@ -2107,16 +2144,18 @@ class _AdminDashboardState extends State<AdminDashboard>
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               // Status
               _buildDetailRow('Status', attendance.status.toUpperCase()),
               const SizedBox(height: 8),
-              
+
               // Shift Information
               Consumer<ShiftProvider>(
                 builder: (context, shiftProvider, child) {
-                  if (shiftProvider.hasShifts && attendance.checkInTime != null) {
-                    final currentShift = shiftProvider.getCurrentShift(attendance.checkInTime!);
+                  if (shiftProvider.hasShifts &&
+                      attendance.checkInTime != null) {
+                    final currentShift =
+                        shiftProvider.getCurrentShift(attendance.checkInTime!);
                     if (currentShift != null) {
                       return Column(
                         children: [
@@ -2137,7 +2176,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Shift: ${currentShift.shiftName}',
@@ -2167,7 +2207,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                   return const SizedBox.shrink();
                 },
               ),
-              
+
               // Check-in Time
               if (attendance.checkInTime != null)
                 _buildEditableTimeRow(
@@ -2176,7 +2216,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                   (newTime) => _updateCheckInTime(attendance, newTime),
                 ),
               const SizedBox(height: 8),
-              
+
               // Check-out Time
               if (attendance.checkOutTime != null)
                 _buildEditableTimeRow(
@@ -2186,9 +2226,9 @@ class _AdminDashboardState extends State<AdminDashboard>
                 )
               else
                 _buildDetailRow('Check-out', 'Not checked out'),
-              
+
               const SizedBox(height: 8),
-              
+
               // Working Hours
               if (attendance.totalMinutes > 0)
                 _buildDetailRow(
@@ -2245,7 +2285,8 @@ class _AdminDashboardState extends State<AdminDashboard>
     );
   }
 
-  Widget _buildEditableTimeRow(String label, DateTime time, Function(DateTime) onTimeChanged) {
+  Widget _buildEditableTimeRow(
+      String label, DateTime time, Function(DateTime) onTimeChanged) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -2276,9 +2317,10 @@ class _AdminDashboardState extends State<AdminDashboard>
     );
   }
 
-  void _showTimeEditDialog(DateTime currentTime, Function(DateTime) onTimeChanged) {
+  void _showTimeEditDialog(
+      DateTime currentTime, Function(DateTime) onTimeChanged) {
     DateTime selectedDateTime = currentTime;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -2359,12 +2401,13 @@ class _AdminDashboardState extends State<AdminDashboard>
 
       // Update local data and refresh
       final provider = context.read<AdminAttendanceProvider>();
-      await provider.loadTodayAttendance();
+      await provider.loadTodayAttendanceSummary();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Check-in time updated to ${DateFormat('HH:mm').format(newTime)}'),
+            content: Text(
+                'Check-in time updated to ${DateFormat('HH:mm').format(newTime)}'),
             backgroundColor: Colors.green,
           ),
         );
@@ -2401,12 +2444,13 @@ class _AdminDashboardState extends State<AdminDashboard>
 
       // Update local data and refresh
       final provider = context.read<AdminAttendanceProvider>();
-      await provider.loadTodayAttendance();
+      await provider.loadTodayAttendanceSummary();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Check-out time updated to ${DateFormat('HH:mm').format(newTime)}'),
+            content: Text(
+                'Check-out time updated to ${DateFormat('HH:mm').format(newTime)}'),
             backgroundColor: Colors.green,
           ),
         );
@@ -2429,7 +2473,8 @@ class _AdminDashboardState extends State<AdminDashboard>
     final employeeName = employee?.name ?? 'Unknown User';
 
     // Controllers for editing
-    final TextEditingController notesController = TextEditingController(text: attendance.notes ?? '');
+    final TextEditingController notesController =
+        TextEditingController(text: attendance.notes ?? '');
     String selectedStatus = attendance.status;
     DateTime? selectedCheckInTime = attendance.checkInTime;
     DateTime? selectedCheckOutTime = attendance.checkOutTime;
@@ -2462,11 +2507,14 @@ class _AdminDashboardState extends State<AdminDashboard>
                           children: [
                             Text(
                               employeeName,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              DateFormat('EEEE, MMMM dd, yyyy').format(attendance.date),
-                              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                              DateFormat('EEEE, MMMM dd, yyyy')
+                                  .format(attendance.date),
+                              style: TextStyle(
+                                  color: Colors.grey[600], fontSize: 12),
                             ),
                           ],
                         ),
@@ -2476,15 +2524,18 @@ class _AdminDashboardState extends State<AdminDashboard>
                   const SizedBox(height: 20),
 
                   // Status Selection
-                  const Text('Status:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Status:',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
                     value: selectedStatus,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                    items: ['present', 'late', 'absent', 'on_leave'].map((status) {
+                    items:
+                        ['present', 'late', 'absent', 'on_leave'].map((status) {
                       return DropdownMenuItem(
                         value: status,
                         child: Text(status.toUpperCase()),
@@ -2499,28 +2550,33 @@ class _AdminDashboardState extends State<AdminDashboard>
                   const SizedBox(height: 16),
 
                   // Check-in Time
-                  const Text('Check-in Time:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Check-in Time:',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   InkWell(
                     onTap: () async {
                       final date = await showDatePicker(
                         context: context,
                         initialDate: selectedCheckInTime ?? DateTime.now(),
-                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        firstDate:
+                            DateTime.now().subtract(const Duration(days: 365)),
                         lastDate: DateTime.now().add(const Duration(days: 30)),
                       );
                       if (date != null) {
                         final time = await showTimePicker(
                           context: context,
-                          initialTime: selectedCheckInTime != null 
+                          initialTime: selectedCheckInTime != null
                               ? TimeOfDay.fromDateTime(selectedCheckInTime!)
                               : TimeOfDay.now(),
                         );
                         if (time != null) {
                           setState(() {
                             selectedCheckInTime = DateTime(
-                              date.year, date.month, date.day,
-                              time.hour, time.minute,
+                              date.year,
+                              date.month,
+                              date.day,
+                              time.hour,
+                              time.minute,
                             );
                           });
                         }
@@ -2538,7 +2594,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                           const SizedBox(width: 8),
                           Text(
                             selectedCheckInTime != null
-                                ? DateFormat('yyyy-MM-dd HH:mm').format(selectedCheckInTime!)
+                                ? DateFormat('yyyy-MM-dd HH:mm')
+                                    .format(selectedCheckInTime!)
                                 : 'No check-in time',
                           ),
                           const Spacer(),
@@ -2550,28 +2607,33 @@ class _AdminDashboardState extends State<AdminDashboard>
                   const SizedBox(height: 16),
 
                   // Check-out Time
-                  const Text('Check-out Time:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Check-out Time:',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   InkWell(
                     onTap: () async {
                       final date = await showDatePicker(
                         context: context,
                         initialDate: selectedCheckOutTime ?? DateTime.now(),
-                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                        firstDate:
+                            DateTime.now().subtract(const Duration(days: 365)),
                         lastDate: DateTime.now().add(const Duration(days: 30)),
                       );
                       if (date != null) {
                         final time = await showTimePicker(
                           context: context,
-                          initialTime: selectedCheckOutTime != null 
+                          initialTime: selectedCheckOutTime != null
                               ? TimeOfDay.fromDateTime(selectedCheckOutTime!)
                               : TimeOfDay.now(),
                         );
                         if (time != null) {
                           setState(() {
                             selectedCheckOutTime = DateTime(
-                              date.year, date.month, date.day,
-                              time.hour, time.minute,
+                              date.year,
+                              date.month,
+                              date.day,
+                              time.hour,
+                              time.minute,
                             );
                           });
                         }
@@ -2589,7 +2651,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                           const SizedBox(width: 8),
                           Text(
                             selectedCheckOutTime != null
-                                ? DateFormat('yyyy-MM-dd HH:mm').format(selectedCheckOutTime!)
+                                ? DateFormat('yyyy-MM-dd HH:mm')
+                                    .format(selectedCheckOutTime!)
                                 : 'No check-out time',
                           ),
                           const Spacer(),
@@ -2601,7 +2664,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                   const SizedBox(height: 16),
 
                   // Working Hours (Calculated)
-                  if (selectedCheckInTime != null && selectedCheckOutTime != null)
+                  if (selectedCheckInTime != null &&
+                      selectedCheckOutTime != null)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -2625,7 +2689,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                   const SizedBox(height: 16),
 
                   // Notes
-                  const Text('Notes:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Notes:',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: notesController,
@@ -2701,7 +2766,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
       // Refresh local data
       final provider = context.read<AdminAttendanceProvider>();
-      await provider.loadTodayAttendance();
+      await provider.loadTodayAttendanceSummary();
 
       if (mounted) {
         Navigator.of(context).pop(); // Close dialog
@@ -2766,20 +2831,16 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   // Delete attendance record from employee overview
-  Future<void> _deleteAttendanceFromOverview(
-    AttendanceModel attendance, 
-    AdminAttendanceProvider provider, 
-    String employeeName
-  ) async {
+  Future<void> _deleteAttendanceFromOverview(AttendanceModel attendance,
+      AdminAttendanceProvider provider, String employeeName) async {
     final dateStr = DateFormat('MMM dd, yyyy').format(attendance.date);
-    
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Attendance Record'),
         content: Text(
-          'Are you sure you want to delete the attendance record for $employeeName on $dateStr?'
-        ),
+            'Are you sure you want to delete the attendance record for $employeeName on $dateStr?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2814,13 +2875,14 @@ class _AdminDashboardState extends State<AdminDashboard>
         // Close loading dialog
         Navigator.pop(context);
 
-        // Refresh the provider data
-        await provider.loadTodayAttendance();
+        // Refresh data
+        await provider.loadTodayAttendanceSummary();
 
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Attendance record for $employeeName deleted successfully'),
+            content: Text(
+                'Attendance record for $employeeName deleted successfully'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),
@@ -2828,7 +2890,7 @@ class _AdminDashboardState extends State<AdminDashboard>
       } catch (e) {
         // Close loading dialog if open
         Navigator.pop(context);
-        
+
         // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2841,8 +2903,8 @@ class _AdminDashboardState extends State<AdminDashboard>
     }
   }
 
-
-  void _showLateEmployeesDialog(List<AttendanceModel> lateEmployees, ShiftProvider shiftProvider) {
+  void _showLateEmployeesDialog(
+      List<AttendanceModel> lateEmployees, ShiftProvider shiftProvider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -2870,39 +2932,45 @@ class _AdminDashboardState extends State<AdminDashboard>
                 ),
               ),
               const SizedBox(height: 16),
-              
               Expanded(
                 child: ListView.builder(
                   itemCount: lateEmployees.length,
                   itemBuilder: (context, index) {
                     final attendance = lateEmployees[index];
-                    final employee = Provider.of<AdminAttendanceProvider>(context, listen: false)
+                    final employee = Provider.of<AdminAttendanceProvider>(
+                            context,
+                            listen: false)
                         .getEmployeeById(attendance.userId);
                     final employeeName = employee?.name ?? 'Unknown User';
-                    
+
                     // Get shift info - prioritize noon Shift if both match
                     var shift;
                     if (attendance.checkInTime != null) {
                       final matchingShifts = shiftProvider.activeShifts
-                          .where((s) => s.isWithinShiftWindow(attendance.checkInTime!))
+                          .where((s) =>
+                              s.isWithinShiftWindow(attendance.checkInTime!))
                           .toList();
-                      
+
                       if (matchingShifts.isNotEmpty) {
-                        // Prefer "noon Shift" over "moring Shift" 
+                        // Prefer "noon Shift" over "moring Shift"
                         final noonShift = matchingShifts
-                            .where((s) => s.shiftName.toLowerCase().contains('noon'))
+                            .where((s) =>
+                                s.shiftName.toLowerCase().contains('noon'))
                             .firstOrNull;
                         shift = noonShift ?? matchingShifts.first;
                       }
                     }
-                    
+
                     // Calculate how late they were (after grace period)
                     String lateByText = '';
                     if (shift != null && attendance.checkInTime != null) {
                       final shiftStartMinutes = shift.startTimeMinutes;
-                      final gracePeriodEndMinutes = shiftStartMinutes + shift.gracePeriodMinutes; // Grace period end time
-                      final actualMinutes = attendance.checkInTime!.hour * 60 + attendance.checkInTime!.minute;
-                      final lateMinutes = actualMinutes - gracePeriodEndMinutes; // Late after grace period
+                      final gracePeriodEndMinutes = shiftStartMinutes +
+                          shift.gracePeriodMinutes; // Grace period end time
+                      final actualMinutes = attendance.checkInTime!.hour * 60 +
+                          attendance.checkInTime!.minute;
+                      final lateMinutes = actualMinutes -
+                          gracePeriodEndMinutes; // Late after grace period
                       if (lateMinutes > 0) {
                         final hours = lateMinutes ~/ 60;
                         final minutes = lateMinutes % 60;
@@ -2913,7 +2981,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                         }
                       }
                     }
-                    
+
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
@@ -2928,7 +2996,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                             backgroundColor: Colors.red[100],
                             radius: 18,
                             child: Text(
-                              employeeName.length >= 2 
+                              employeeName.length >= 2
                                   ? employeeName.substring(0, 2).toUpperCase()
                                   : employeeName.toUpperCase(),
                               style: TextStyle(
@@ -2971,7 +3039,8 @@ class _AdminDashboardState extends State<AdminDashboard>
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.red[100],
                               borderRadius: BorderRadius.circular(4),
@@ -3005,18 +3074,19 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   /// Calculate late employees based on shift data
-  List<AttendanceModel> _calculateLateEmployees(AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+  List<AttendanceModel> _calculateLateEmployees(
+      AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
     if (!shiftProvider.hasShifts) return [];
-    
+
     return provider.todayAttendance.where((attendance) {
       if (attendance.checkInTime == null) return false;
-      
+
       // Find the shift for this check-in time - prioritize noon Shift
       var shift;
       final matchingShifts = shiftProvider.activeShifts
           .where((s) => s.isWithinShiftWindow(attendance.checkInTime!))
           .toList();
-      
+
       if (matchingShifts.isNotEmpty) {
         // Prefer "noon Shift" over "moring Shift"
         final noonShift = matchingShifts
@@ -3024,23 +3094,25 @@ class _AdminDashboardState extends State<AdminDashboard>
             .firstOrNull;
         shift = noonShift ?? matchingShifts.first;
       }
-      
+
       if (shift == null) return false;
-      
+
       // Check if they're late based on shift + grace period
       return shift.isLateCheckIn(attendance.checkInTime!);
     }).toList();
   }
 
   /// Calculate shift-based statistics
-  Map<String, dynamic> _calculateShiftBasedStats(AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
+  Map<String, dynamic> _calculateShiftBasedStats(
+      AdminAttendanceProvider provider, ShiftProvider shiftProvider) {
     final lateEmployees = _calculateLateEmployees(provider, shiftProvider);
-    final presentEmployees = provider.todayAttendance.where((a) => a.checkInTime != null).toList();
-    
+    final presentEmployees =
+        provider.todayAttendance.where((a) => a.checkInTime != null).toList();
+
     // Calculate employees by shift
     Map<String, List<AttendanceModel>> employeesByShift = {};
     Map<String, int> lateByShift = {};
-    
+
     for (var attendance in provider.todayAttendance) {
       if (attendance.checkInTime != null) {
         // Find the shift for this check-in time - prioritize noon Shift
@@ -3048,7 +3120,7 @@ class _AdminDashboardState extends State<AdminDashboard>
         final matchingShifts = shiftProvider.activeShifts
             .where((s) => s.isWithinShiftWindow(attendance.checkInTime!))
             .toList();
-        
+
         if (matchingShifts.isNotEmpty) {
           // Prefer "noon Shift" over "moring Shift"
           final noonShift = matchingShifts
@@ -3056,17 +3128,20 @@ class _AdminDashboardState extends State<AdminDashboard>
               .firstOrNull;
           shift = noonShift ?? matchingShifts.first;
         }
-        
+
         if (shift != null) {
-          employeesByShift.putIfAbsent(shift.shiftName, () => []).add(attendance);
-          
+          employeesByShift
+              .putIfAbsent(shift.shiftName, () => [])
+              .add(attendance);
+
           if (shift.isLateCheckIn(attendance.checkInTime!)) {
-            lateByShift[shift.shiftName] = (lateByShift[shift.shiftName] ?? 0) + 1;
+            lateByShift[shift.shiftName] =
+                (lateByShift[shift.shiftName] ?? 0) + 1;
           }
         }
       }
     }
-    
+
     return {
       'totalLate': lateEmployees.length,
       'totalPresent': presentEmployees.length,
@@ -3107,8 +3182,9 @@ class _AdminDashboardState extends State<AdminDashboard>
           );
         }
 
-        final shiftStats = _calculateShiftBasedStats(adminProvider, shiftProvider);
-        
+        final shiftStats =
+            _calculateShiftBasedStats(adminProvider, shiftProvider);
+
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -3150,7 +3226,6 @@ class _AdminDashboardState extends State<AdminDashboard>
                 ],
               ),
               const SizedBox(height: 16),
-              
               if (!shiftProvider.hasShifts) ...[
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -3232,9 +3307,11 @@ class _AdminDashboardState extends State<AdminDashboard>
                           ),
                         ),
                         GestureDetector(
-                          onTap: () => _showLateEmployeesDialog(shiftStats['lateEmployees'], shiftProvider),
+                          onTap: () => _showLateEmployeesDialog(
+                              shiftStats['lateEmployees'], shiftProvider),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.red[100],
                               borderRadius: BorderRadius.circular(4),
@@ -3254,7 +3331,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                   ),
                   const SizedBox(height: 12),
                 ],
-                
+
                 // Shift Breakdown
                 Text(
                   'Today\'s Attendance by Shift',
@@ -3265,31 +3342,44 @@ class _AdminDashboardState extends State<AdminDashboard>
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 ...shiftProvider.activeShifts.map((shift) {
-                  final shiftEmployees = (shiftStats['employeesByShift'] as Map<String, List<AttendanceModel>>)[shift.shiftName] ?? [];
-                  final shiftLateCount = (shiftStats['lateByShift'] as Map<String, int>)[shift.shiftName] ?? 0;
-                  
+                  final shiftEmployees = (shiftStats['employeesByShift'] as Map<
+                          String, List<AttendanceModel>>)[shift.shiftName] ??
+                      [];
+                  final shiftLateCount = (shiftStats['lateByShift']
+                          as Map<String, int>)[shift.shiftName] ??
+                      0;
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: shiftLateCount > 0 ? Colors.orange[50] : Colors.green[50],
+                      color: shiftLateCount > 0
+                          ? Colors.orange[50]
+                          : Colors.green[50],
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: shiftLateCount > 0 ? Colors.orange[200]! : Colors.green[200]!),
+                      border: Border.all(
+                          color: shiftLateCount > 0
+                              ? Colors.orange[200]!
+                              : Colors.green[200]!),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: shiftLateCount > 0 ? Colors.orange[100] : Colors.green[100],
+                            color: shiftLateCount > 0
+                                ? Colors.orange[100]
+                                : Colors.green[100],
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Icon(
                             Icons.work_outline,
                             size: 16,
-                            color: shiftLateCount > 0 ? Colors.orange[700] : Colors.green[700],
+                            color: shiftLateCount > 0
+                                ? Colors.orange[700]
+                                : Colors.green[700],
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -3301,7 +3391,9 @@ class _AdminDashboardState extends State<AdminDashboard>
                                 shift.shiftName,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  color: shiftLateCount > 0 ? Colors.orange[700] : Colors.green[700],
+                                  color: shiftLateCount > 0
+                                      ? Colors.orange[700]
+                                      : Colors.green[700],
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -3309,7 +3401,9 @@ class _AdminDashboardState extends State<AdminDashboard>
                                 'Time: ${shift.formattedShiftTime} • ${shiftEmployees.length} present',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: shiftLateCount > 0 ? Colors.orange[600] : Colors.green[600],
+                                  color: shiftLateCount > 0
+                                      ? Colors.orange[600]
+                                      : Colors.green[600],
                                 ),
                               ),
                               if (shiftLateCount > 0) ...[
@@ -3327,9 +3421,12 @@ class _AdminDashboardState extends State<AdminDashboard>
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: shiftLateCount > 0 ? Colors.orange[100] : Colors.green[100],
+                            color: shiftLateCount > 0
+                                ? Colors.orange[100]
+                                : Colors.green[100],
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -3337,7 +3434,9 @@ class _AdminDashboardState extends State<AdminDashboard>
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w500,
-                              color: shiftLateCount > 0 ? Colors.orange[700] : Colors.green[700],
+                              color: shiftLateCount > 0
+                                  ? Colors.orange[700]
+                                  : Colors.green[700],
                             ),
                           ),
                         ),
@@ -3345,16 +3444,17 @@ class _AdminDashboardState extends State<AdminDashboard>
                     ),
                   );
                 }),
-                
+
                 const SizedBox(height: 12),
-                
+
                 // Current shift status
                 Consumer<AdminAttendanceProvider>(
                   builder: (context, adminProvider, child) {
                     final now = DateTime.now();
                     final currentShift = shiftProvider.getCurrentShift(now);
-                    final availableShifts = shiftProvider.getAvailableShiftsForCheckIn(now);
-                    
+                    final availableShifts =
+                        shiftProvider.getAvailableShiftsForCheckIn(now);
+
                     return Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -3371,11 +3471,11 @@ class _AdminDashboardState extends State<AdminDashboard>
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              currentShift != null 
-                                ? 'Current active shift: ${currentShift.shiftName}'
-                                : availableShifts.isNotEmpty
-                                  ? 'Check-in available for: ${availableShifts.map((s) => s.shiftName).join(', ')}'
-                                  : 'No active shifts at this time',
+                              currentShift != null
+                                  ? 'Current active shift: ${currentShift.shiftName}'
+                                  : availableShifts.isNotEmpty
+                                      ? 'Check-in available for: ${availableShifts.map((s) => s.shiftName).join(', ')}'
+                                      : 'No active shifts at this time',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.blue[700],
