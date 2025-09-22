@@ -1,4 +1,3 @@
-// ignore_for_file: avoid_print
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -24,7 +23,6 @@ class SystemLockGuard extends StatelessWidget {
             authProvider.currentUser != null &&
             !authProvider.currentUser!.isSuperAdmin) {
           
-          print('🔒 SystemLockGuard: System is locked, redirecting non-super-admin user');
           
           // Use WidgetsBinding to ensure navigation happens after build
           WidgetsBinding.instance.addPostFrameCallback((_) {

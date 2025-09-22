@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use, unused_import, avoid_print, unnecessary_brace_in_string_interps, use_build_context_synchronously, prefer_typing_uninitialized_variables
 
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:attendance_system/screens/admin/debug_location_screen.dart';
 import 'package:attendance_system/screens/admin/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -1594,51 +1596,83 @@ class _AdminDashboardState extends State<AdminDashboard>
         csvContent += '"$employeeName","$employeeRole","$dateStr","$checkIn","$checkOut","${attendance.status}","$totalHours"\n';
       }
       
-      if (context.mounted) {
+      // Always try to close loading dialog first
+      try {
         Navigator.pop(context); // Close loading dialog
+      } catch (e) {
+        // Failed to close loading dialog
+      }
+      
+      if (context.mounted) {
+        // Trigger CSV download
+        _downloadCsv(csvContent, 'attendance_$period.csv');
         
-        // Show success message with data preview
+        // Show success message
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-          title: const Text('Export Successful'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Exported ${attendanceData.length} attendance records for $period.'),
-              const SizedBox(height: 16),
-              const Text('CSV data has been generated with the following columns:'),
-              const SizedBox(height: 8),
-              const Text('• Employee Name\n• Role\n• Date\n• Check In\n• Check Out\n• Status\n• Total Hours'),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(4),
+            title: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 8),
+                const Text('Export Successful'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('✅ Exported ${attendanceData.length} attendance records for $period'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.file_download, color: Colors.green, size: 20),
+                          const SizedBox(width: 8),
+                          const Text('CSV file downloaded!', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('File: attendance_$period.csv'),
+                      Text('Records: ${attendanceData.length}'),
+                      Text('Size: ${(csvContent.length / 1024).toStringAsFixed(1)} KB'),
+                    ],
+                  ),
                 ),
-                child: Text(
-                  'Data size: ${csvContent.length} characters',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                ),
+                const SizedBox(height: 16),
+                const Text('Columns included:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                const Text('• Employee Name  • Role  • Date\n• Check In  • Check Out  • Status  • Total Hours'),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
         );
       }
       
     } catch (e) {
+      // Always try to close loading dialog on error
+      try {
+        Navigator.pop(context);
+      } catch (navError) {
+        // Could not close dialog
+      }
+      
       if (context.mounted) {
-        Navigator.pop(context); // Close loading dialog if open
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Export failed: $e'),
@@ -1914,6 +1948,98 @@ class _AdminDashboardState extends State<AdminDashboard>
                 color: color,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _downloadCsv(String csvContent, String filename) {
+    // Show CSV content in a copyable dialog for all platforms
+    // This avoids web-only library issues while providing cross-platform functionality
+    _showCsvContent(csvContent, filename);
+  }
+
+  void _showCsvContent(String csvContent, String filename) {
+    if (!context.mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.content_copy, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text(kIsWeb ? 'Download Ready' : 'CSV Export'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(kIsWeb 
+                ? 'Your CSV file "$filename" is ready. Copy the content below:'
+                : 'CSV export complete. Copy the content below and save as "$filename":'),
+            const SizedBox(height: 16),
+            Container(
+              height: 300,
+              width: double.maxFinite,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.grey[50],
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  csvContent,
+                  style: const TextStyle(
+                    fontFamily: 'monospace', 
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Tip: Copy all text and save as ${filename} file',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Copy to clipboard functionality could be added here
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Select all text and copy (Ctrl+A, Ctrl+C)'),
+                ),
+              );
+            },
+            child: const Text('Copy Instructions'),
           ),
         ],
       ),

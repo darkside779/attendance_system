@@ -60,7 +60,6 @@ class LocationService {
         currentLongitude: currentPosition.longitude,
       );
     } catch (e) {
-      print('Error checking user location: $e');
       return LocationCheckResult(
         isWithinRange: false,
         message: 'Error checking location: $e',
@@ -103,7 +102,6 @@ class LocationService {
       }
       return 'Lat: ${latitude.toStringAsFixed(6)}, Lng: ${longitude.toStringAsFixed(6)}';
     } catch (e) {
-      print('Error getting address: $e');
       // Return coordinates as fallback instead of error message
       return 'Lat: ${latitude.toStringAsFixed(6)}, Lng: ${longitude.toStringAsFixed(6)}';
     }
@@ -130,7 +128,6 @@ class LocationService {
       }
       return null;
     } catch (e) {
-      print('Error getting coordinates: $e');
       return null;
     }
   }
@@ -205,7 +202,6 @@ class LocationService {
     try {
       return await Geolocator.openLocationSettings();
     } catch (e) {
-      print('Error opening location settings: $e');
       return false;
     }
   }
@@ -215,7 +211,6 @@ class LocationService {
     try {
       return await Geolocator.openAppSettings();
     } catch (e) {
-      print('Error opening app settings: $e');
       return false;
     }
   }

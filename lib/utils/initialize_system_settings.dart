@@ -11,7 +11,6 @@ class SystemSettingsInitializer {
           .get();
       
       if (!doc.exists) {
-        print('🔧 Creating initial system_settings document...');
         await FirebaseFirestore.instance
             .collection('system_settings')
             .doc('system_config')
@@ -22,12 +21,9 @@ class SystemSettingsInitializer {
           'lockedAt': null,
           'createdAt': FieldValue.serverTimestamp(),
         });
-        print('✅ System settings initialized successfully');
       } else {
-        print('✅ System settings already exist');
       }
     } catch (e) {
-      print('❌ Error initializing system settings: $e');
       // Don't throw error - system will work without this document
     }
   }
@@ -38,7 +34,6 @@ class SystemSettingsInitializer {
     try {
       await initializeSystemSettings();
     } catch (e) {
-      print('⚠️ Could not initialize system settings (user may not be authenticated): $e');
     }
   }
 }

@@ -20,7 +20,6 @@ class SystemLockService {
       }
       return false;
     } catch (e) {
-      print('⚠️ SystemLockService: Error checking system lock status: $e');
       // For now, assume system is unlocked if we can't check
       // This prevents the app from breaking due to Firebase rules
       return false;
@@ -46,7 +45,6 @@ class SystemLockService {
       
       return true;
     } catch (e) {
-      print('Error locking system: $e');
       return false;
     }
   }
@@ -68,7 +66,6 @@ class SystemLockService {
       
       return true;
     } catch (e) {
-      print('Error unlocking system: $e');
       return false;
     }
   }
@@ -86,7 +83,6 @@ class SystemLockService {
       }
       return null;
     } catch (e) {
-      print('Error getting system lock info: $e');
       return null;
     }
   }

@@ -15,7 +15,6 @@ class IncompleteCheckoutHelper {
     String? userId,
   }) async {
     try {
-      print('🔍 Searching for incomplete checkouts...');
       
       Query query = FirebaseFirestore.instance
           .collection(_attendanceCollection)
@@ -37,14 +36,9 @@ class IncompleteCheckoutHelper {
           .map((doc) => AttendanceModel.fromDocument(doc))
           .toList();
       
-      print('📋 Found ${incompleteCheckouts.length} incomplete checkouts');
-      for (var checkout in incompleteCheckouts) {
-        print('  - User: ${checkout.userId}, Date: ${checkout.date}, Check-in: ${checkout.checkInTime}');
-      }
       
       return incompleteCheckouts;
     } catch (e) {
-      print('❌ Error finding incomplete checkouts: $e');
       return [];
     }
   }
@@ -55,7 +49,6 @@ class IncompleteCheckoutHelper {
       final incompleteCheckouts = await findIncompleteCheckouts(userId: userId);
       return incompleteCheckouts.isNotEmpty ? incompleteCheckouts.first : null;
     } catch (e) {
-      print('❌ Error checking user incomplete checkout: $e');
       return null;
     }
   }
@@ -86,13 +79,11 @@ class IncompleteCheckoutHelper {
             users.add(UserModel.fromJson({...userData, 'userId': userId}));
           }
         } catch (e) {
-          print('❌ Error fetching user $userId: $e');
         }
       }
       
       return users;
     } catch (e) {
-      print('❌ Error getting users for incomplete checkouts: $e');
       return [];
     }
   }
@@ -104,7 +95,6 @@ class IncompleteCheckoutHelper {
     String reason = 'Auto-completed by system',
   }) async {
     try {
-      print('🔄 Auto-completing checkout for user ${attendance.userId}');
       
       // Calculate auto checkout time (shift end time or 30 minutes after shift end)
       final checkInDate = attendance.checkInTime!;
@@ -136,10 +126,8 @@ class IncompleteCheckoutHelper {
         'notes': '${attendance.notes ?? ''}\n$reason'.trim(),
       });
       
-      print('✅ Auto-completed checkout at $autoCheckoutTime');
       return true;
     } catch (e) {
-      print('❌ Error auto-completing checkout: $e');
       return false;
     }
   }
@@ -151,7 +139,6 @@ class IncompleteCheckoutHelper {
     String reason = 'Manually completed by admin',
   }) async {
     try {
-      print('🔄 Manually completing checkout for user ${attendance.userId}');
       
       // Calculate total working minutes
       final totalMinutes = checkoutTime.difference(attendance.checkInTime!).inMinutes;
@@ -166,10 +153,8 @@ class IncompleteCheckoutHelper {
         'notes': '${attendance.notes ?? ''}\n$reason'.trim(),
       });
       
-      print('✅ Manually completed checkout at $checkoutTime');
       return true;
     } catch (e) {
-      print('❌ Error manually completing checkout: $e');
       return false;
     }
   }

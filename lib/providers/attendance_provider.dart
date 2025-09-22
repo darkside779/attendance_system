@@ -502,7 +502,7 @@ class AdminAttendanceProvider extends ChangeNotifier {
   }
 
   /// Load today's attendance records
-  Future<void> loadTodayAttendance() async {
+  Future<void> loadTodayAttendance(String userId) async {
     _setLoading(true);
     _clearError();
 
@@ -531,7 +531,7 @@ class AdminAttendanceProvider extends ChangeNotifier {
       print('📈 Calculated stats: $_todayStats');
     } catch (e) {
       print('❌ Error loading today\'s attendance: $e');
-      _setError('Failed to load today\'s attendance: $e');
+      _setError('Failed to load attendance: $e');
     }
 
     _setLoading(false);
