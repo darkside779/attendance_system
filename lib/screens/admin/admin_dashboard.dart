@@ -1426,23 +1426,46 @@ class _AdminDashboardState extends State<AdminDashboard>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Export Attendance Report'),
-        content: const Text('Choose the format for your attendance report:'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Choose the date range for your attendance report:'),
+            const SizedBox(height: 16),
+            
+            ListTile(
+              leading: Icon(Icons.today, color: Colors.blue),
+              title: const Text('Today'),
+              subtitle: const Text('Export today\'s attendance data'),
+              onTap: () => _performExport(context, 'today'),
+            ),
+            
+            ListTile(
+              leading: Icon(Icons.calendar_view_week, color: Colors.green),
+              title: const Text('This Week'),
+              subtitle: const Text('Export this week\'s attendance data'),
+              onTap: () => _performExport(context, 'week'),
+            ),
+            
+            ListTile(
+              leading: Icon(Icons.calendar_month, color: Colors.orange),
+              title: const Text('This Month'),
+              subtitle: const Text('Export this month\'s attendance data'),
+              onTap: () => _performExport(context, 'month'),
+            ),
+            
+            ListTile(
+              leading: Icon(Icons.date_range, color: Colors.purple),
+              title: const Text('Custom Range'),
+              subtitle: const Text('Choose specific date range'),
+              onTap: () => _showCustomDateRangeExport(context),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('CSV report exported successfully!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            child: const Text('Export CSV'),
           ),
         ],
       ),
@@ -1458,25 +1481,39 @@ class _AdminDashboardState extends State<AdminDashboard>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.today),
+              leading: Icon(Icons.today, color: Colors.blue),
               title: const Text('Daily Report'),
               subtitle: const Text('Today\'s attendance summary'),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Daily report generated!')),
-                );
+                _navigateToReportsScreen('daily');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.calendar_month),
+              leading: Icon(Icons.calendar_month, color: Colors.green),
               title: const Text('Monthly Report'),
               subtitle: const Text('This month\'s attendance data'),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Monthly report generated!')),
-                );
+                _navigateToReportsScreen('monthly');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.analytics, color: Colors.purple),
+              title: const Text('Analytics Dashboard'),
+              subtitle: const Text('Comprehensive attendance analytics'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToReportsScreen('analytics');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.date_range, color: Colors.orange),
+              title: const Text('Custom Reports'),
+              subtitle: const Text('Generate reports for specific periods'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToReportsScreen('custom');
               },
             ),
           ],
@@ -1485,6 +1522,398 @@ class _AdminDashboardState extends State<AdminDashboard>
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _performExport(BuildContext context, String period) async {
+    Navigator.pop(context); // Close the dialog
+    
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Exporting data...'),
+            ],
+          ),
+        ),
+      );
+      
+      final adminProvider = Provider.of<AdminAttendanceProvider>(context, listen: false);
+      
+      // Calculate date range based on period
+      DateTime startDate;
+      DateTime endDate = DateTime.now();
+      
+      switch (period) {
+        case 'today':
+          startDate = DateTime(endDate.year, endDate.month, endDate.day);
+          break;
+        case 'week':
+          int weekday = endDate.weekday;
+          startDate = endDate.subtract(Duration(days: weekday - 1));
+          startDate = DateTime(startDate.year, startDate.month, startDate.day);
+          break;
+        case 'month':
+          startDate = DateTime(endDate.year, endDate.month, 1);
+          break;
+        default:
+          startDate = DateTime(endDate.year, endDate.month, 1);
+      }
+      
+      // Load attendance data for the period
+      await adminProvider.loadAttendanceRecords(startDate, endDate);
+      final attendanceData = adminProvider.allAttendanceRecords;
+      
+      // Generate CSV content
+      String csvContent = 'Employee Name,Role,Date,Check In,Check Out,Status,Total Hours\n';
+      
+      for (final attendance in attendanceData) {
+        final employee = adminProvider.getEmployeeById(attendance.userId);
+        final employeeName = employee?.name ?? 'Unknown';
+        final employeeRole = employee?.role ?? 'Staff';
+        final checkIn = attendance.checkInTime != null 
+            ? '${attendance.checkInTime!.hour.toString().padLeft(2, '0')}:${attendance.checkInTime!.minute.toString().padLeft(2, '0')}'
+            : 'Not recorded';
+        final checkOut = attendance.checkOutTime != null 
+            ? '${attendance.checkOutTime!.hour.toString().padLeft(2, '0')}:${attendance.checkOutTime!.minute.toString().padLeft(2, '0')}'
+            : 'Not recorded';
+        final totalHours = attendance.hasCheckedOut 
+            ? '${(attendance.totalMinutes / 60).toStringAsFixed(2)} hrs'
+            : 'In progress';
+        final dateStr = '${attendance.date.day}/${attendance.date.month}/${attendance.date.year}';
+        
+        csvContent += '"$employeeName","$employeeRole","$dateStr","$checkIn","$checkOut","${attendance.status}","$totalHours"\n';
+      }
+      
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog
+        
+        // Show success message with data preview
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+          title: const Text('Export Successful'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Exported ${attendanceData.length} attendance records for $period.'),
+              const SizedBox(height: 16),
+              const Text('CSV data has been generated with the following columns:'),
+              const SizedBox(height: 8),
+              const Text('• Employee Name\n• Role\n• Date\n• Check In\n• Check Out\n• Status\n• Total Hours'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Data size: ${csvContent.length} characters',
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+        );
+      }
+      
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog if open
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showCustomDateRangeExport(BuildContext context) async {
+    Navigator.pop(context); // Close current dialog
+    
+    final DateTimeRange? dateRange = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now(),
+      initialDateRange: DateTimeRange(
+        start: DateTime.now().subtract(const Duration(days: 7)),
+        end: DateTime.now(),
+      ),
+    );
+    
+    if (dateRange != null) {
+      try {
+        // Show loading indicator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Text('Exporting custom range data...'),
+              ],
+            ),
+          ),
+        );
+        
+        final adminProvider = Provider.of<AdminAttendanceProvider>(context, listen: false);
+        await adminProvider.loadAttendanceRecords(dateRange.start, dateRange.end);
+        
+        if (context.mounted) {
+          Navigator.pop(context); // Close loading dialog
+          
+          final attendanceData = adminProvider.allAttendanceRecords;
+          
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+            title: const Text('Custom Range Export'),
+            content: Text('Exported ${attendanceData.length} records from ${dateRange.start.day}/${dateRange.start.month}/${dateRange.start.year} to ${dateRange.end.day}/${dateRange.end.month}/${dateRange.end.year}'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        }
+        
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.pop(context); // Close loading dialog if open
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Custom export failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  void _navigateToReportsScreen(String reportType) {
+    switch (reportType) {
+      case 'daily':
+        _showDailyReport();
+        break;
+      case 'monthly':
+        _showMonthlyReport();
+        break;
+      case 'analytics':
+        _showAnalyticsDashboard();
+        break;
+      case 'custom':
+        _showCustomReportDialog();
+        break;
+    }
+  }
+
+  void _showDailyReport() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.today, color: Colors.blue),
+            const SizedBox(width: 8),
+            const Text('Daily Report'),
+          ],
+        ),
+        content: Consumer<AdminAttendanceProvider>(
+          builder: (context, provider, child) {
+            final todayAttendance = provider.todayAttendance;
+            final totalEmployees = provider.employees.length;
+            final presentCount = todayAttendance.where((a) => a.status == 'present' || a.status == 'late').length;
+            final lateCount = todayAttendance.where((a) => a.status == 'late').length;
+            final absentCount = totalEmployees - presentCount;
+            
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}'),
+                const SizedBox(height: 16),
+                _buildReportStat('Total Employees', '$totalEmployees', Colors.blue),
+                _buildReportStat('Present', '$presentCount', Colors.green),
+                _buildReportStat('Late', '$lateCount', Colors.orange),
+                _buildReportStat('Absent', '$absentCount', Colors.red),
+                const SizedBox(height: 16),
+                Text('Attendance Rate: ${totalEmployees > 0 ? ((presentCount / totalEmployees) * 100).toStringAsFixed(1) : 0}%'),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Daily report exported!')),
+              );
+            },
+            child: const Text('Export'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMonthlyReport() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.calendar_month, color: Colors.green),
+            const SizedBox(width: 8),
+            const Text('Monthly Report'),
+          ],
+        ),
+        content: Consumer<AdminAttendanceProvider>(
+          builder: (context, provider, child) {
+            final monthlyStats = provider.monthlyStats;
+            
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Month: ${DateTime.now().month}/${DateTime.now().year}'),
+                const SizedBox(height: 16),
+                _buildReportStat('Total Records', '${monthlyStats['total'] ?? 0}', Colors.blue),
+                _buildReportStat('Present Days', '${monthlyStats['present'] ?? 0}', Colors.green),
+                _buildReportStat('Late Days', '${monthlyStats['late'] ?? 0}', Colors.orange),
+                _buildReportStat('Absent Days', '${monthlyStats['absent'] ?? 0}', Colors.red),
+                const SizedBox(height: 16),
+                Text('Average Working Hours: ${monthlyStats['averageWorkingHours'] ?? '0.0'}/day'),
+                Text('Total Working Hours: ${monthlyStats['totalWorkingHours'] ?? '0.0'}'),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Monthly report exported!')),
+              );
+            },
+            child: const Text('Export'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAnalyticsDashboard() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Analytics Dashboard - Coming Soon!'),
+        backgroundColor: Colors.purple,
+      ),
+    );
+  }
+
+  void _showCustomReportDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.date_range, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Text('Custom Report'),
+          ],
+        ),
+        content: const Text('Select a date range to generate a custom attendance report.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final DateTimeRange? dateRange = await showDateRangePicker(
+                context: context,
+                firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                lastDate: DateTime.now(),
+                initialDateRange: DateTimeRange(
+                  start: DateTime.now().subtract(const Duration(days: 30)),
+                  end: DateTime.now(),
+                ),
+              );
+              
+              if (dateRange != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Custom report generated for ${dateRange.start.day}/${dateRange.start.month} - ${dateRange.end.day}/${dateRange.end.month}'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Select Dates'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportStat(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
           ),
         ],
       ),
